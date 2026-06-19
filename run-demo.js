@@ -228,34 +228,44 @@ async function runAgent({ systemPrompt, input, outputFile, doneMarker, label }) 
   }
 
   return new Promise((resolve, reject) => {
-    const child = spawn(
-      "claude",
-      [
-        "--model", "claude-opus-4-8",
-        "--system-prompt", systemPrompt,
-        "--print",
-        "--output-file", outputFile,
-      ],
-      { stdio: ["pipe", "inherit", "inherit"] }
-    );
+    const command = `claude --model claude-opus-4-8 --system-prompt "${systemPrompt}" --print`;
+    const child = spawn(command, {
+      stdio: ["pipe", "pipe", "inherit"],
+      shell: true,
+    });
+
+    let stdoutContent = "";
+    child.stdout.on("data", (chunk) => {
+      const text = chunk.toString();
+      stdoutContent += text;
+      process.stdout.write(text);
+    });
 
     child.stdin.write(input);
     child.stdin.end();
 
-    child.on("close", (code) => {
-      if (code !== 0) return reject(new Error(`${label} exited with code ${code}`));
+    child.on("error", (err) => {
+      // If spawn fails at runtime (e.g. ENOENT on Windows), keep demo flow alive.
+      warn(`Failed to launch claude for ${label} (${err.code || err.message}) — simulating output.`);
+      simulateAgent(label, outputFile, doneMarker);
+      resolve();
+    });
 
-      // Poll for done marker
-      const poll = setInterval(() => {
-        if (existsSync(outputFile)) {
-          const content = readFileSync(outputFile, "utf-8");
-          if (content.includes(doneMarker)) {
-            clearInterval(poll);
-            log(`${label}: STATUS: DONE ✓`);
-            resolve();
-          }
-        }
-      }, 2000);
+    child.on("close", (code) => {
+      if (code !== 0) {
+        warn(`${label} exited with code ${code} — simulating output to continue demo.`);
+        simulateAgent(label, outputFile, doneMarker);
+        resolve();
+        return;
+      }
+
+      writeFileSync(outputFile, stdoutContent, "utf-8");
+      if (stdoutContent.includes(doneMarker)) {
+        log(`${label}: STATUS: DONE ✓`);
+      } else {
+        warn(`${label} finished but did not include '${doneMarker}' marker.`);
+      }
+      resolve();
     });
   });
 }
