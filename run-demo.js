@@ -14,6 +14,8 @@
  *
  * Env vars (alternative to flags):
  *   FIGMA_URL, LINEAR_TEAM_ID, LINEAR_API_KEY
+ *   node run-demo.js --claude-permission-mode bypassPermissions
+ *   node run-demo.js --claude-permission-mode default --claude-allowed-tools "Bash Edit Write"
  */
 
 import { execSync, spawn } from "child_process";
@@ -27,6 +29,8 @@ import { createInterface } from "readline";
 const FIGMA_URL  = process.env.FIGMA_URL  || getArg("--figma")       || "https://www.figma.com/design/tHm72cbGTItMqApwFQ7pkZ/WhatsAppUI?node-id=0-8855&m=dev";
 const LINEAR_KEY = process.env.LINEAR_API_KEY || getArg("--linear-key") || "lin_api_mvsp7YObSM8Yt0zvVb3Je0ks4rA0j3N1MzkV7mx7";
 const LINEAR_TEAM = process.env.LINEAR_TEAM_ID || getArg("--linear-team") || "18bf3c85-0e18-403b-bb77-2d1c1f0f8fed";
+const CLAUDE_PERMISSION_MODE = process.env.CLAUDE_PERMISSION_MODE || getArg("--claude-permission-mode") || "bypassPermissions";
+const CLAUDE_ALLOWED_TOOLS = process.env.CLAUDE_ALLOWED_TOOLS || getArg("--claude-allowed-tools");
 
 const PLAN_FILE    = "docs/PLAN.md";
 const TICKETS_FILE = "docs/tickets.json";
@@ -63,8 +67,16 @@ async function main() {
   banner("STEP 2/4 · CREATING LINEAR TICKETS");
 
   let tickets;
+  let linearClient = null;
+  let linearStates = null;
   if (LINEAR_KEY && LINEAR_TEAM) {
-    tickets = await createLinearTickets(LINEAR_KEY, LINEAR_TEAM);
+    linearClient = createLinearClient(LINEAR_KEY);
+    linearStates = await getTeamStates(linearClient, LINEAR_TEAM);
+    tickets = await createLinearTickets({
+      client: linearClient,
+      teamId: LINEAR_TEAM,
+      states: linearStates,
+    });
   } else {
     warn("No LINEAR_API_KEY / LINEAR_TEAM_ID — simulating ticket creation.");
     tickets = simulateTickets();
@@ -78,13 +90,27 @@ async function main() {
   banner("STEP 3/4 · LAUNCHING FRONTEND AGENT");
   log("Frontend agent is building the UI and defining the API contract...\n");
 
+  if (linearClient && linearStates?.inProgress) {
+    await updateLinearIssue(linearClient, tickets.frontend.issueId, {
+      stateId: linearStates.inProgress,
+    });
+    log(`CHAT-FE moved to In Progress`);
+  }
+
   await runAgent({
     systemPrompt: "agents/frontend/CLAUDE.md",
-    input: `You are the Frontend Agent. Your Linear ticket is: ${tickets.frontend.url}\nFigma designs: ${FIGMA_URL}\nPRD: docs/PRD.md\nPlan: docs/PLAN.md\nStart now. Follow your CLAUDE.md instructions exactly.`,
+    input: `You are the Frontend Agent. Your Linear ticket is: ${tickets.frontend.url}\nFigma designs: ${FIGMA_URL}\nPRD: docs/PRD.md\nPlan: docs/PLAN.md\nStart now. Follow your CLAUDE.md instructions exactly.\nImportant: end your final response with the exact line 'STATUS: DONE'.`,
     outputFile: FE_REPORT,
     doneMarker: "STATUS: DONE",
     label: "Frontend Agent",
   });
+
+  if (linearClient && linearStates?.done) {
+    await updateLinearIssue(linearClient, tickets.frontend.issueId, {
+      stateId: linearStates.done,
+    });
+    log(`CHAT-FE moved to Done`);
+  }
 
   log("Frontend agent done. API contract written to docs/api-contract.yaml");
 
@@ -92,13 +118,27 @@ async function main() {
   banner("STEP 4/4 · LAUNCHING BACKEND AGENT");
   log("Backend agent is implementing the API and WebSocket server...\n");
 
+  if (linearClient && linearStates?.inProgress) {
+    await updateLinearIssue(linearClient, tickets.backend.issueId, {
+      stateId: linearStates.inProgress,
+    });
+    log(`CHAT-BE moved to In Progress`);
+  }
+
   await runAgent({
     systemPrompt: "agents/backend/CLAUDE.md",
-    input: `You are the Backend Agent. Your Linear ticket is: ${tickets.backend.url}\nAPI contract: docs/api-contract.yaml\nPlan: docs/PLAN.md\nStart now. Follow your CLAUDE.md instructions exactly.`,
+    input: `You are the Backend Agent. Your Linear ticket is: ${tickets.backend.url}\nAPI contract: docs/api-contract.yaml\nPlan: docs/PLAN.md\nStart now. Follow your CLAUDE.md instructions exactly.\nImportant: end your final response with the exact line 'STATUS: DONE'.`,
     outputFile: BE_REPORT,
     doneMarker: "STATUS: DONE",
     label: "Backend Agent",
   });
+
+  if (linearClient && linearStates?.done) {
+    await updateLinearIssue(linearClient, tickets.backend.issueId, {
+      stateId: linearStates.done,
+    });
+    log(`CHAT-BE moved to Done`);
+  }
 
   // ── Done ─────────────────────────────────────────────────────────────────
   banner("DEMO COMPLETE ✓");
@@ -157,13 +197,61 @@ messages:       id, conversation_id, sender_id, sender_name, content, created_at
 `;
 }
 
-async function createLinearTickets(apiKey, teamId) {
+function createLinearClient(apiKey) {
   const headers = {
     "Content-Type": "application/json",
     Authorization: apiKey,
   };
 
-  async function createIssue(title, description, labelName) {
+  return {
+    async graphql(query, variables = {}) {
+      const body = JSON.stringify({ query, variables });
+      const res = await fetch("https://api.linear.app/graphql", {
+        method: "POST", headers, body,
+      });
+      const json = await res.json();
+      if (json?.errors?.length) {
+        throw new Error(`Linear API error: ${JSON.stringify(json.errors)}`);
+      }
+      return json.data;
+    },
+  };
+}
+
+async function getTeamStates(client, teamId) {
+  const query = `
+    query TeamStates($teamId: String!) {
+      team(id: $teamId) {
+        states {
+          nodes { id name type }
+        }
+      }
+    }
+  `;
+  const data = await client.graphql(query, { teamId });
+  const nodes = data?.team?.states?.nodes || [];
+  return {
+    todo: findStateId(nodes, ["unstarted", "backlog", "todo", "triage"]),
+    inProgress: findStateId(nodes, ["started", "in progress", "inprogress", "doing"]),
+    done: findStateId(nodes, ["completed", "done", "canceled", "cancelled"]),
+  };
+}
+
+function findStateId(nodes, candidates) {
+  const lowered = candidates.map((x) => x.toLowerCase());
+  for (const node of nodes) {
+    const name = String(node?.name || "").toLowerCase();
+    const type = String(node?.type || "").toLowerCase();
+    if (lowered.includes(type) || lowered.includes(name)) {
+      return node.id;
+    }
+  }
+  return undefined;
+}
+
+async function createLinearTickets({ client, teamId, states }) {
+
+  async function createIssue(title, description) {
     const query = `
       mutation CreateIssue($input: IssueCreateInput!) {
         issueCreate(input: $input) {
@@ -172,42 +260,44 @@ async function createLinearTickets(apiKey, teamId) {
         }
       }
     `;
-    const body = JSON.stringify({
-      query,
-      variables: {
-        input: { teamId, title, description, priority: 2 },
-      },
-    });
+    const input = { teamId, title, description, priority: 2 };
+    if (states?.todo) input.stateId = states.todo;
 
-    const res = await fetch("https://api.linear.app/graphql", {
-      method: "POST", headers, body,
-    });
-    const json = await res.json();
-    const issue = json?.data?.issueCreate?.issue;
-    if (!issue) throw new Error(`Linear API error: ${JSON.stringify(json)}`);
+    const data = await client.graphql(query, { input });
+    const issue = data?.issueCreate?.issue;
+    if (!issue) throw new Error("Linear API error: issueCreate returned no issue");
     return issue;
   }
 
   log("Creating Linear ticket: CHAT-FE...");
   const fe = await createIssue(
     "[CHAT] Build Chat UI",
-    "Build the React chat frontend per docs/PRD.md and Figma designs.\nDefine API contract in docs/api-contract.yaml.\nWrite Vitest unit tests and Playwright e2e tests.",
-    "frontend"
+    "Build the React chat frontend per docs/PRD.md and Figma designs.\nDefine API contract in docs/api-contract.yaml.\nWrite Vitest unit tests and Playwright e2e tests."
   );
   log(`  Created: ${fe.url}`);
 
   log("Creating Linear ticket: CHAT-BE...");
   const be = await createIssue(
     "[CHAT] Build Chat API + WebSocket server",
-    "Implement Express + Socket.io backend per docs/api-contract.yaml.\nSet up Supabase schema (backend/supabase/schema.sql).\nWrite Vitest + Supertest API tests.",
-    "backend"
+    "Implement Express + Socket.io backend per docs/api-contract.yaml.\nSet up Supabase schema (backend/supabase/schema.sql).\nWrite Vitest + Supertest API tests."
   );
   log(`  Created: ${be.url}`);
 
   return {
-    frontend: { id: fe.identifier, url: fe.url },
-    backend:  { id: be.identifier, url: be.url },
+    frontend: { id: fe.identifier, issueId: fe.id, url: fe.url },
+    backend:  { id: be.identifier, issueId: be.id, url: be.url },
   };
+}
+
+async function updateLinearIssue(client, issueId, input) {
+  const query = `
+    mutation UpdateIssue($issueId: String!, $input: IssueUpdateInput!) {
+      issueUpdate(id: $issueId, input: $input) {
+        success
+      }
+    }
+  `;
+  await client.graphql(query, { issueId, input });
 }
 
 function simulateTickets() {
@@ -228,11 +318,33 @@ async function runAgent({ systemPrompt, input, outputFile, doneMarker, label }) 
   }
 
   return new Promise((resolve, reject) => {
-    const command = `claude --model claude-opus-4-8 --system-prompt "${systemPrompt}" --print`;
-    const child = spawn(command, {
-      stdio: ["pipe", "pipe", "inherit"],
-      shell: true,
-    });
+    const args = [
+      "--model", "claude-opus-4-8",
+      "--permission-mode", CLAUDE_PERMISSION_MODE,
+      "--add-dir", process.cwd(),
+      "--system-prompt", systemPrompt,
+      "--print",
+    ];
+
+    if (CLAUDE_ALLOWED_TOOLS) {
+      args.push("--allowedTools", CLAUDE_ALLOWED_TOOLS);
+    }
+
+    log(`${label}: launching Claude with permission mode '${CLAUDE_PERMISSION_MODE}'.`);
+
+    let child;
+    if (process.platform === "win32") {
+      const command = ["claude", ...args.map(quoteArgForCmd)].join(" ");
+      child = spawn(command, {
+        stdio: ["pipe", "pipe", "inherit"],
+        shell: true,
+      });
+    } else {
+      child = spawn("claude", args, {
+        stdio: ["pipe", "pipe", "inherit"],
+        shell: false,
+      });
+    }
 
     let stdoutContent = "";
     child.stdout.on("data", (chunk) => {
@@ -260,7 +372,8 @@ async function runAgent({ systemPrompt, input, outputFile, doneMarker, label }) 
       }
 
       writeFileSync(outputFile, stdoutContent, "utf-8");
-      if (stdoutContent.includes(doneMarker)) {
+      const doneRegex = /^\s*STATUS\s*:\s*DONE\s*$/im;
+      if (stdoutContent.includes(doneMarker) || doneRegex.test(stdoutContent)) {
         log(`${label}: STATUS: DONE ✓`);
       } else {
         warn(`${label} finished but did not include '${doneMarker}' marker.`);
@@ -309,6 +422,12 @@ function warn(msg) {
 function getArg(flag) {
   const i = process.argv.indexOf(flag);
   return i !== -1 ? process.argv[i + 1] : undefined;
+}
+
+function quoteArgForCmd(value) {
+  const s = String(value);
+  if (!/[\s"]/u.test(s)) return s;
+  return `"${s.replace(/"/g, '""')}"`;
 }
 
 main().catch((e) => {
