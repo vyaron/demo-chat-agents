@@ -66,6 +66,13 @@ async function main() {
     writeFileSync(planPath, planContent, "utf-8")
     writeFileSync(LATEST_PLAN_FILE, planContent, "utf-8")
     log(`Plan written: ${planPath}`)
+    await reviewPlanUntilApproved({
+      task,
+      prd,
+      figmaUrl: task.figmaUrl || FIGMA_URL,
+      planPath,
+    })
+    await markPlanStatus(planPath, "active")
 
     let tickets
     if (linearClient && LINEAR_TEAM) {
@@ -75,24 +82,8 @@ async function main() {
         tickets = await createLinearTickets({ client: linearClient, teamId: LINEAR_TEAM, states: linearStates, task, planPath })
       }
       writeFileSync(TICKETS_FILE, JSON.stringify(tickets, null, 2))
-
-      const reviewState = linearStates?.inReview || linearStates?.todo
-      if (reviewState) {
-        await updateLinearIssue(linearClient, tickets.frontend.issueId, { stateId: reviewState })
-      }
-
-      log("Plan gate: update the FRONTEND ticket in Linear to In Progress when you approve the plan.")
-      await waitForLinearIssueState({
-        client: linearClient,
-        issueId: tickets.frontend.issueId,
-        targetKinds: ["started", "in progress", "inprogress", "doing"],
-        label: `${tickets.frontend.id} plan approval`,
-      })
-      await markPlanStatus(planPath, "active")
     } else {
-      warn("No Linear configured. Falling back to terminal approval for plan.")
-      await waitForApproval("Review the plan above and type APPROVED to continue: ")
-      await markPlanStatus(planPath, "active")
+      warn("No Linear configured. Using simulated tickets after terminal approval.")
       tickets = simulateTickets(task.slug)
       writeFileSync(TICKETS_FILE, JSON.stringify(tickets, null, 2))
     }
@@ -148,7 +139,7 @@ async function main() {
       await waitForLinearIssueState({
         client: linearClient,
         issueId: tickets.qa.issueId,
-        targetKinds: ["completed", "done", "canceled", "cancelled"],
+        targetKinds: ["completed", "done"],
         label: `${tickets.qa.id} feature approval`,
       })
     } else {
@@ -311,6 +302,81 @@ Plan requirements:
   return stdout
 }
 
+async function askClaudeToRevisePlan({ task, prd, figmaUrl, planPath, currentPlan, feedback }) {
+  const args = [
+    "--model", "claude-opus-4-8",
+    "--permission-mode", CLAUDE_PERMISSION_MODE,
+    "--add-dir", process.cwd(),
+    "--system-prompt", "agents/orchestrator/CLAUDE.md",
+    "--print",
+  ]
+  if (CLAUDE_ALLOWED_TOOLS) args.push("--allowedTools", CLAUDE_ALLOWED_TOOLS)
+
+  const input = `Follow planning rules from .rule/planning-rules.md exactly.
+
+Revise this existing plan based on latest user feedback and latest plan-file edits.
+
+Task:
+- title: ${task.title}
+- slug: ${task.slug}
+- figma: ${figmaUrl}
+
+Plan path: ${planPath}
+
+PRD context (first 80 lines):
+${prd.split("\n").slice(0, 80).join("\n")}
+
+User feedback for this revision cycle:
+${feedback}
+
+Current plan content:
+${currentPlan}
+
+Output only the full updated markdown plan.
+
+Hard requirements:
+- Keep required metadata fields and sections
+- Keep repository-relative paths only
+- Keep Status as draft until explicit APPROVED in terminal
+- Resolve or update Open Questions based on feedback where possible`
+
+  const stdout = await spawnClaude(args, input)
+  if (!stdout) return null
+  return stdout.trim() || null
+}
+
+async function reviewPlanUntilApproved({ task, prd, figmaUrl, planPath }) {
+  log("Plan gate: review and refine. Tickets will be created only after terminal APPROVED.")
+
+  while (true) {
+    const answer = await askUserInput(
+      `Review ${planPath}. Type APPROVED to continue, or enter feedback to revise the plan: `,
+    )
+    const normalized = answer.trim().toUpperCase()
+    if (normalized === "APPROVED") {
+      log("Plan gate passed via terminal approval.")
+      return
+    }
+
+    const currentPlan = existsSync(planPath) ? readFileSync(planPath, "utf-8") : ""
+    if (!currentPlan.trim()) {
+      warn(`Plan file ${planPath} is missing or empty. Update it, then continue review.`)
+      continue
+    }
+
+    const feedback = answer.trim() || "No extra terminal feedback. Re-read the latest plan file and improve clarity and completeness."
+    const revised = await askClaudeToRevisePlan({ task, prd, figmaUrl, planPath, currentPlan, feedback })
+    if (!revised) {
+      warn("Could not auto-revise the plan (Claude unavailable). You can edit the plan file manually, then continue review.")
+      continue
+    }
+
+    writeFileSync(planPath, revised, "utf-8")
+    writeFileSync(LATEST_PLAN_FILE, revised, "utf-8")
+    log(`Plan updated: ${planPath}`)
+  }
+}
+
 async function askClaudeToCreateTickets({ teamId, task, planPath }) {
   const plan = existsSync(planPath) ? readFileSync(planPath, "utf-8") : ""
   const args = [
@@ -395,7 +461,7 @@ async function getTeamStates(client, teamId) {
     todo: findStateId(nodes, ["unstarted", "backlog", "todo", "triage"]),
     inProgress: findStateId(nodes, ["started", "in progress", "inprogress", "doing"]),
     inReview: findStateId(nodes, ["in review", "review", "for review"]),
-    done: findStateId(nodes, ["completed", "done", "canceled", "cancelled"]),
+    done: findStateId(nodes, ["completed", "done"]),
   }
 }
 
@@ -635,16 +701,19 @@ function slugify(value) {
 }
 
 function waitForApproval(prompt) {
+  return askUserInput(prompt).then((answer) => {
+    if (answer.trim().toUpperCase() === "APPROVED") return
+    console.error("Aborted.")
+    process.exit(1)
+  })
+}
+
+function askUserInput(prompt) {
   return new Promise((resolve) => {
     const rl = createInterface({ input: process.stdin, output: process.stdout })
     rl.question(prompt, (answer) => {
       rl.close()
-      if (answer.trim().toUpperCase() === "APPROVED") {
-        resolve()
-      } else {
-        console.error("Aborted.")
-        process.exit(1)
-      }
+      resolve(answer)
     })
   })
 }
