@@ -16,7 +16,7 @@ import { execSync, spawn } from "child_process"
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs"
 import { createInterface } from "readline"
 
-const FIGMA_URL = process.env.FIGMA_URL || getArg("--figma") || "https://www.figma.com/design/tHm72cbGTItMqApwFQ7pkZ/WhatsAppUI?node-id=0-8855&m=dev"
+const FIGMA_URL = process.env.FIGMA_URL || getArg("--figma")
 const LINEAR_KEY = process.env.LINEAR_API_KEY || getArg("--linear-key") 
 const LINEAR_TEAM = process.env.LINEAR_TEAM_ID || getArg("--linear-team") 
 const CLAUDE_PERMISSION_MODE = process.env.CLAUDE_PERMISSION_MODE || getArg("--claude-permission-mode") || "bypassPermissions"
