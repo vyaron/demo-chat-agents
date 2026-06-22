@@ -17,8 +17,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { createInterface } from "readline"
 
 const FIGMA_URL = process.env.FIGMA_URL || getArg("--figma") || "https://www.figma.com/design/tHm72cbGTItMqApwFQ7pkZ/WhatsAppUI?node-id=0-8855&m=dev"
-const LINEAR_KEY = process.env.LINEAR_API_KEY || getArg("--linear-key") || "lin_api_mvsp7YObSM8Yt0zvVb3Je0ks4rA0j3N1MzkV7mx7"
-const LINEAR_TEAM = process.env.LINEAR_TEAM_ID || getArg("--linear-team") || "18bf3c85-0e18-403b-bb77-2d1c1f0f8fed"
+const LINEAR_KEY = process.env.LINEAR_API_KEY || getArg("--linear-key") 
+const LINEAR_TEAM = process.env.LINEAR_TEAM_ID || getArg("--linear-team") 
 const CLAUDE_PERMISSION_MODE = process.env.CLAUDE_PERMISSION_MODE || getArg("--claude-permission-mode") || "bypassPermissions"
 const CLAUDE_ALLOWED_TOOLS = process.env.CLAUDE_ALLOWED_TOOLS || getArg("--claude-allowed-tools")
 
