@@ -17,8 +17,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { createInterface } from "readline"
 
 const FIGMA_URL = process.env.FIGMA_URL || getArg("--figma") || "https://www.figma.com/design/tHm72cbGTItMqApwFQ7pkZ/WhatsAppUI?node-id=0-8855&m=dev"
-const LINEAR_KEY = process.env.LINEAR_API_KEY || getArg("--linear-key") || "lin_api_mvsp7YObSM8Yt0zvVb3Je0ks4rA0j3N1MzkV7mx7"
-const LINEAR_TEAM = process.env.LINEAR_TEAM_ID || getArg("--linear-team") || "18bf3c85-0e18-403b-bb77-2d1c1f0f8fed"
+const LINEAR_KEY = process.env.LINEAR_API_KEY || getArg("--linear-key") || ""
+const LINEAR_TEAM = process.env.LINEAR_TEAM_ID || getArg("--linear-team") || ""
 const CLAUDE_PERMISSION_MODE = process.env.CLAUDE_PERMISSION_MODE || getArg("--claude-permission-mode") || "bypassPermissions"
 const CLAUDE_ALLOWED_TOOLS = process.env.CLAUDE_ALLOWED_TOOLS || getArg("--claude-allowed-tools")
 
@@ -29,6 +29,11 @@ const TICKETS_FILE = "docs/tickets.json"
 const FE_REPORT = "docs/frontend-agent-report.md"
 const BE_REPORT = "docs/backend-agent-report.md"
 const QA_REPORT = "docs/qa-report.md"
+const TRACE_FILE = "docs/trace.json"
+
+// Cost/observability: one entry per Claude CLI call this loop iteration.
+// Populated by recordCost(), printed by printCostTable(), reset per task.
+let costLog = []
 
 async function main() {
   banner("QUICKCHAT DEMO — DEV LOOP")
@@ -98,6 +103,7 @@ async function main() {
       outputFile: FE_REPORT,
       doneMarker: "STATUS: DONE",
       label: "Frontend Agent",
+      role: "frontend",
     })
 
     if (linearClient && linearStates?.done) {
@@ -113,6 +119,7 @@ async function main() {
       outputFile: BE_REPORT,
       doneMarker: "STATUS: DONE",
       label: "Backend Agent",
+      role: "backend",
     })
 
     if (linearClient && linearStates?.done) {
@@ -128,6 +135,7 @@ async function main() {
       outputFile: QA_REPORT,
       doneMarker: "STATUS: DONE",
       label: "QA Agent",
+      role: "qa",
     })
 
     if (linearClient) {
@@ -148,8 +156,65 @@ async function main() {
 
     await markPlanStatus(planPath, "done")
     markBacklogTaskDone(task)
+    printCostTable()
     log(`Task complete: ${task.title}`)
   }
+}
+
+// Parses a Claude CLI `--output-format json` response, records its cost/usage
+// into costLog under the given role, and returns the agent's text result so
+// callers can keep treating it like plain stdout.
+function recordCost(role, label, rawStdout) {
+  if (!rawStdout) return null
+
+  let parsed
+  try {
+    parsed = JSON.parse(rawStdout)
+  } catch {
+    // Not JSON (e.g. simulated/fallback output) - nothing to record.
+    return rawStdout
+  }
+
+  costLog.push({
+    role,
+    label,
+    inputTokens: parsed.usage?.input_tokens ?? 0,
+    outputTokens: parsed.usage?.output_tokens ?? 0,
+    cacheReadTokens: parsed.usage?.cache_read_input_tokens ?? 0,
+    costUsd: parsed.total_cost_usd ?? 0,
+    durationMs: parsed.duration_ms ?? 0,
+  })
+
+  return parsed.result ?? rawStdout
+}
+
+function logLastCost(label) {
+  const entry = costLog[costLog.length - 1]
+  if (!entry || entry.label !== label) return
+  log(`${label}: $${entry.costUsd.toFixed(4)} · ${entry.inputTokens} in / ${entry.outputTokens} out tokens · ${(entry.durationMs / 1000).toFixed(1)}s`)
+}
+
+function printCostTable() {
+  if (costLog.length === 0) return
+
+  banner("COST & OBSERVABILITY — THIS TASK")
+  const rows = costLog.map((entry) => ({
+    Role: entry.label,
+    "In tokens": entry.inputTokens,
+    "Out tokens": entry.outputTokens,
+    "Cache read": entry.cacheReadTokens,
+    "Cost (USD)": `$${entry.costUsd.toFixed(4)}`,
+    "Duration": `${(entry.durationMs / 1000).toFixed(1)}s`,
+  }))
+  console.table(rows)
+
+  const totalCost = costLog.reduce((sum, entry) => sum + entry.costUsd, 0)
+  log(`Total cost this task: $${totalCost.toFixed(4)} across ${costLog.length} Claude call(s).`)
+
+  writeFileSync(TRACE_FILE, JSON.stringify(costLog, null, 2), "utf-8")
+  log(`Trace written: ${TRACE_FILE}`)
+
+  costLog = []
 }
 
 function ensurePlanDirAndBacklog() {
@@ -259,6 +324,7 @@ async function askClaudeForPlan({ task, prd, figmaUrl, planPath, previousPlans }
     "--add-dir", process.cwd(),
     "--system-prompt", "agents/orchestrator/CLAUDE.md",
     "--print",
+    "--output-format", "json",
   ]
   if (CLAUDE_ALLOWED_TOOLS) args.push("--allowedTools", CLAUDE_ALLOWED_TOOLS)
 
@@ -288,11 +354,13 @@ Plan requirements:
 - Use repository-relative paths only
 - Open Questions section must contain clear questions and recommended answers`
 
-  const stdout = await spawnClaude(args, input)
-  if (!stdout) {
+  const rawStdout = await spawnClaude(args, input)
+  if (!rawStdout) {
     warn("Claude unavailable for planning; using fallback plan template.")
     return generatePlanFallback({ task, figmaUrl })
   }
+  const stdout = recordCost("orchestrator", "Orchestrator (planning)", rawStdout)
+  logLastCost("Orchestrator (planning)")
 
   if (existsSync(planPath)) {
     const written = readFileSync(planPath, "utf-8")
@@ -563,24 +631,32 @@ function simulateTickets(slug) {
   }
 }
 
-async function runAgent({ systemPrompt, input, outputFile, doneMarker, label }) {
+async function runAgent({ systemPrompt, input, outputFile, doneMarker, label, role }) {
   const args = [
     "--model", "claude-opus-4-8",
     "--permission-mode", CLAUDE_PERMISSION_MODE,
     "--add-dir", process.cwd(),
     "--system-prompt", systemPrompt,
     "--print",
+    "--output-format", "json",
   ]
   if (CLAUDE_ALLOWED_TOOLS) args.push("--allowedTools", CLAUDE_ALLOWED_TOOLS)
 
   log(`${label}: launching Claude with permission mode '${CLAUDE_PERMISSION_MODE}'.`)
-  const stdout = await spawnClaude(args, input)
+  // CLAUDE_AGENT_ROLE is read by .claude/hooks/enforce-agent-boundaries.js so the
+  // frontend/backend path boundaries in agents/*/CLAUDE.md are actually enforced,
+  // not just requested — this matters because CLAUDE_PERMISSION_MODE defaults to
+  // bypassPermissions for this demo, so hooks are the only real guardrail left.
+  const rawStdout = await spawnClaude(args, input, role ? { CLAUDE_AGENT_ROLE: role } : {})
 
-  if (stdout === null) {
+  if (rawStdout === null) {
     warn(`${label}: Claude not available or failed — simulating output.`)
     simulateAgent(label, outputFile, doneMarker)
     return
   }
+
+  const stdout = recordCost(role ?? "agent", label, rawStdout)
+  logLastCost(label)
 
   writeFileSync(outputFile, stdout, "utf-8")
   const doneRegex = /^\s*STATUS\s*:\s*DONE\s*$/im
@@ -596,12 +672,18 @@ function simulateAgent(label, outputFile, doneMarker) {
   writeFileSync(outputFile, content)
 }
 
-function spawnClaude(args, stdinText) {
+function spawnClaude(args, stdinText, extraEnv = {}) {
   try {
     execSync("claude --version", { stdio: "ignore" })
   } catch {
     return Promise.resolve(null)
   }
+
+  const env = { ...process.env, ...extraEnv }
+  // --output-format json buffers one JSON blob instead of streaming readable
+  // text, so don't echo it live to the terminal (it'd just dump raw JSON
+  // mid-demo) — the caller prints a clean summary once recordCost() parses it.
+  const quiet = args.includes("--output-format")
 
   return new Promise((resolve) => {
     let child
@@ -610,11 +692,13 @@ function spawnClaude(args, stdinText) {
       child = spawn(command, {
         stdio: ["pipe", "pipe", "inherit"],
         shell: true,
+        env,
       })
     } else {
       child = spawn("claude", args, {
         stdio: ["pipe", "pipe", "inherit"],
         shell: false,
+        env,
       })
     }
 
@@ -622,7 +706,7 @@ function spawnClaude(args, stdinText) {
     child.stdout.on("data", (chunk) => {
       const text = chunk.toString()
       stdout += text
-      process.stdout.write(text)
+      if (!quiet) process.stdout.write(text)
     })
 
     child.stdin.write(stdinText)
