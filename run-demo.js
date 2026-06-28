@@ -4,7 +4,7 @@
  *
  * Loop per backlog item:
  *   1) Pick next task from .plan/000-backlog.md
- *   2) Read relevant Figma frames (discovery allowed)
+ *   2) Read relevant Figma frames when available (discovery allowed)
  *   3) Generate plan in .plan/NNN-YYYY-MM-DD-topic.md and request approval
  *   4) Launch FE then BE agents
  *   5) Launch QA / E2E validation
@@ -19,7 +19,7 @@ import { createInterface } from "readline"
 
 dotenv.config()
 
-const FIGMA_URL = process.env.FIGMA_URL || getArg("--figma") || "https://www.figma.com/design/tHm72cbGTItMqApwFQ7pkZ/WhatsAppUI?node-id=0-8855&m=dev"
+const FIGMA_URL = process.env.FIGMA_URL || getArg("--figma") || ""
 const LINEAR_KEY = process.env.LINEAR_API_KEY || getArg("--linear-key") || ""
 const LINEAR_TEAM = process.env.LINEAR_TEAM_ID || getArg("--linear-team") || ""
 const CLAUDE_PERMISSION_MODE = process.env.CLAUDE_PERMISSION_MODE || getArg("--claude-permission-mode") || "bypassPermissions"
@@ -102,7 +102,7 @@ async function main() {
 
     await runAgent({
       systemPrompt: "agents/frontend/CLAUDE.md",
-      input: `You are the Frontend Agent.\nTask: ${task.title}\nLinear ticket: ${tickets.frontend.url}\nFigma: ${task.figmaUrl || FIGMA_URL}\nApproved plan: ${planPath}\nFollow your CLAUDE.md instructions exactly.\nEnd your final response with exact line: STATUS: DONE`,
+      input: `You are the Frontend Agent.\nTask: ${task.title}\nLinear ticket: ${tickets.frontend.url}${task.figmaUrl || FIGMA_URL ? `\nFigma: ${task.figmaUrl || FIGMA_URL}` : ""}\nApproved plan: ${planPath}\nFollow your CLAUDE.md instructions exactly.\nEnd your final response with exact line: STATUS: DONE`,
       outputFile: FE_REPORT,
       doneMarker: "STATUS: DONE",
       label: "Frontend Agent",
@@ -230,9 +230,11 @@ function ensurePlanDirAndBacklog() {
       "# Prioritized Backlog",
       "",
       "Use this format:",
-      "- [ ] <title> | figma:<url>",
+      "- [ ] <title>",
+      "- [ ] <title> | figma:<url>    (optional)",
       "",
       "Example:",
+      "- [ ] message searching",
       "- [ ] message searching | figma:https://www.figma.com/design/tHm72cbGTItMqApwFQ7pkZ/WhatsAppUI?node-id=0-8855&m=dev",
       "",
     ].join("\n")
@@ -320,6 +322,18 @@ async function markPlanStatus(planPath, status) {
 
 async function askClaudeForPlan({ task, prd, figmaUrl, planPath, previousPlans }) {
   const prevList = previousPlans.map((p) => `- ${p.name}`).join("\n") || "(none)"
+  const figmaTaskLine = figmaUrl ? `- figma: ${figmaUrl}` : "- figma: (none provided)"
+  const figmaPlanningGuidance = figmaUrl
+    ? [
+      "Use your Figma tool to discover and inspect relevant frames for this task.",
+      "Discovery is allowed but stay scoped to this task only.",
+      "In the plan, include a short section listing selected frames (name + id).",
+    ].join("\n")
+    : [
+      "No Figma link was provided for this task.",
+      "Do not block planning on Figma.",
+      "Use the PRD and existing codebase as the primary sources of truth, and call out any UI assumptions in Open Questions.",
+    ].join("\n")
 
   const args = [
     "--model", "claude-opus-4-8",
@@ -336,7 +350,7 @@ async function askClaudeForPlan({ task, prd, figmaUrl, planPath, previousPlans }
 Task selected from backlog:
 - title: ${task.title}
 - slug: ${task.slug}
-- figma: ${figmaUrl}
+${figmaTaskLine}
 
 Existing plans in .plan:
 ${prevList}
@@ -344,9 +358,7 @@ ${prevList}
 PRD context (first 80 lines):
 ${prd.split("\n").slice(0, 80).join("\n")}
 
-Use your Figma tool to discover and inspect relevant frames for this task.
-Discovery is allowed but stay scoped to this task only.
-In the plan, include a short section listing selected frames (name + id).
+${figmaPlanningGuidance}
 
 Write the implementation plan to: ${planPath}
 Also print the same plan content to stdout.
@@ -374,6 +386,7 @@ Plan requirements:
 }
 
 async function askClaudeToRevisePlan({ task, prd, figmaUrl, planPath, currentPlan, feedback }) {
+  const figmaTaskLine = figmaUrl ? `- figma: ${figmaUrl}` : "- figma: (none provided)"
   const args = [
     "--model", "claude-opus-4-8",
     "--permission-mode", CLAUDE_PERMISSION_MODE,
@@ -390,7 +403,7 @@ Revise this existing plan based on latest user feedback and latest plan-file edi
 Task:
 - title: ${task.title}
 - slug: ${task.slug}
-- figma: ${figmaUrl}
+${figmaTaskLine}
 
 Plan path: ${planPath}
 
