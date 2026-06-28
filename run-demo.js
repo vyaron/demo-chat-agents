@@ -13,8 +13,11 @@
  */
 
 import { execSync, spawn } from "child_process"
+import dotenv from "dotenv"
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs"
 import { createInterface } from "readline"
+
+dotenv.config()
 
 const FIGMA_URL = process.env.FIGMA_URL || getArg("--figma") || "https://www.figma.com/design/tHm72cbGTItMqApwFQ7pkZ/WhatsAppUI?node-id=0-8855&m=dev"
 const LINEAR_KEY = process.env.LINEAR_API_KEY || getArg("--linear-key") || ""
