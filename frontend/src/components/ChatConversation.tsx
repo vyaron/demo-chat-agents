@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Conversation, Message } from "../types";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
@@ -61,7 +61,7 @@ export function ChatConversation({ conversation, onBack }: Props) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [filteredMessages, typingUser]);
 
-  async function handleSearch(query: string) {
+  const handleSearch = useCallback(async (query: string) => {
     if (!query.trim()) {
       setFilteredMessages([]);
       setSearchQuery("");
@@ -89,12 +89,7 @@ export function ChatConversation({ conversation, onBack }: Props) {
     } finally {
       setSearchLoading(false);
     }
-  }
-
-  function handleClearSearch() {
-    setSearchQuery("");
-    setFilteredMessages([]);
-  }
+  }, [conversation.id]);
 
   function handleSend(text: string) {
     const optimistic: Message = {

@@ -93,7 +93,7 @@ describe("ChatConversation - Search State", () => {
         return Promise.resolve({
           ok: true,
           json: async () => [mockMessages[0]],
-        });
+        } as any);
       }
       return Promise.resolve({
         ok: true,
@@ -128,12 +128,12 @@ describe("ChatConversation - Search State", () => {
         return Promise.resolve({
           ok: true,
           json: async () => [mockMessages[0]],
-        });
+        } as any);
       }
       return Promise.resolve({
         ok: true,
         json: async () => mockMessages,
-      });
+      } as any);
     });
 
     render(
@@ -157,12 +157,12 @@ describe("ChatConversation - Search State", () => {
         return Promise.resolve({
           ok: true,
           json: async () => [mockMessages[0]],
-        });
+        } as any);
       }
       return Promise.resolve({
         ok: true,
         json: async () => mockMessages,
-      });
+      } as any);
     });
 
     render(
@@ -193,12 +193,12 @@ describe("ChatConversation - Search State", () => {
         return Promise.resolve({
           ok: true,
           json: async () => [],
-        });
+        } as any);
       }
       return Promise.resolve({
         ok: true,
         json: async () => mockMessages,
-      });
+      } as any);
     });
 
     render(
@@ -222,12 +222,12 @@ describe("ChatConversation - Search State", () => {
         return Promise.resolve({
           ok: true,
           json: async () => [mockMessages[0]],
-        });
+        } as any);
       }
       return Promise.resolve({
         ok: true,
         json: async () => mockMessages,
-      });
+      } as any);
     });
 
     const { container } = render(

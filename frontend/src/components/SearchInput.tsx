@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 
 interface Props {
   onSearch: (query: string) => void;
@@ -9,6 +9,12 @@ interface Props {
 export function SearchInput({ onSearch, isLoading = false, resultCount }: Props) {
   const [query, setQuery] = useState("");
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onSearchRef = useRef(onSearch);
+
+  // Keep ref in sync with latest onSearch callback
+  useEffect(() => {
+    onSearchRef.current = onSearch;
+  }, [onSearch]);
 
   // Debounced search - 300ms delay
   useEffect(() => {
@@ -17,7 +23,7 @@ export function SearchInput({ onSearch, isLoading = false, resultCount }: Props)
     }
 
     debounceTimer.current = setTimeout(() => {
-      onSearch(query);
+      onSearchRef.current(query);
     }, 300);
 
     return () => {
@@ -25,11 +31,12 @@ export function SearchInput({ onSearch, isLoading = false, resultCount }: Props)
         clearTimeout(debounceTimer.current);
       }
     };
-  }, [query, onSearch]);
+    // Only depend on query to maintain stable debounce
+  }, [query]);
 
-  const handleClear = useCallback(() => {
+  const handleClear = () => {
     setQuery("");
-  }, []);
+  };
 
   const isSearching = query.length > 0;
 
