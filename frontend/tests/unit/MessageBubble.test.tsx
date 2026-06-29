@@ -37,4 +37,48 @@ describe("MessageBubble", () => {
     const { container } = render(<MessageBubble message={base} isOwn={false} />);
     expect(container.querySelector(".bg-white")).toBeTruthy();
   });
+
+  it("highlights matching text when highlightQuery is provided", () => {
+    const { container } = render(
+      <MessageBubble message={base} isOwn={false} highlightQuery="Hello" />
+    );
+    const highlighted = container.querySelector(".bg-yellow-300");
+    expect(highlighted).toBeTruthy();
+    expect(highlighted?.textContent).toBe("Hello");
+  });
+
+  it("performs case-insensitive highlighting", () => {
+    const { container } = render(
+      <MessageBubble message={base} isOwn={false} highlightQuery="hello" />
+    );
+    const highlighted = container.querySelector(".bg-yellow-300");
+    expect(highlighted).toBeTruthy();
+    expect(highlighted?.textContent).toBe("Hello");
+  });
+
+  it("highlights multiple occurrences", () => {
+    const message: Message = {
+      ...base,
+      content: "Hello Hello Hello",
+    };
+    const { container } = render(
+      <MessageBubble message={message} isOwn={false} highlightQuery="Hello" />
+    );
+    const highlights = container.querySelectorAll(".bg-yellow-300");
+    expect(highlights.length).toBe(3);
+  });
+
+  it("does not highlight with empty query", () => {
+    const { container } = render(
+      <MessageBubble message={base} isOwn={false} highlightQuery="" />
+    );
+    expect(container.querySelector(".bg-yellow-300")).toBeNull();
+  });
+
+  it("marks message as highlighted-message for testing", () => {
+    render(
+      <MessageBubble message={base} isOwn={false} highlightQuery="Hello" />
+    );
+    expect(screen.getByTestId("highlighted-message")).toBeTruthy();
+  });
 });

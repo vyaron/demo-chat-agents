@@ -81,6 +81,38 @@ paths:
         "400":
           description: Validation error
 
+  /api/conversations/{id}/messages/search:
+    get:
+      summary: Search messages in a conversation by text content
+      operationId: searchMessages
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: q
+          in: query
+          required: true
+          description: Search query term (case-insensitive substring match)
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Array of messages matching the query, ordered by created_at ASC
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+        "400":
+          description: Bad request (missing q parameter)
+        "404":
+          description: Conversation not found
+
   /health:
     get:
       summary: Health check

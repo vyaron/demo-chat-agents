@@ -1,0 +1,27 @@
+{
+  "feature": "Messages Search - Full Stack Feature",
+  "plan": ".plan/001-2026-06-29-messages-search.md",
+  "tickets": [
+    {
+      "id": "CHAT-3",
+      "title": "Messages Search - Frontend Implementation",
+      "scope": "Add search UI to conversation view, state management, debounced fetch, filtering, highlighting",
+      "assignee": "Frontend Agent",
+      "status": "done"
+    },
+    {
+      "id": "CHAT-4",
+      "title": "Messages Search - Backend Implementation",
+      "scope": "Implement /api/conversations/{id}/messages/search endpoint, case-insensitive filtering, API tests",
+      "assignee": "Backend Agent",
+      "status": "done"
+    },
+    {
+      "id": "CHAT-5",
+      "title": "Messages Search - QA Validation",
+      "scope": "Validate search functionality end-to-end, e2e tests, real-time messaging compatibility",
+      "assignee": "QA Agent",
+      "status": "done"
+    }
+  ]
+}

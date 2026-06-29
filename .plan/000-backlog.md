@@ -3,7 +3,7 @@
 
 Current queue:
 
-- [ ] Messages search - full stack feature
+- [x] Messages search - full stack feature (plan: .plan/001-2026-06-29-messages-search.md)
 
 
 
