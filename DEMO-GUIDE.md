@@ -33,7 +33,7 @@ cd frontend && npm run dev
 
 ### 5. Figma
 - Duplicate the Figma file to your workspace
-- Add your Figma URL to the run-demo.js FIGMA_URL or set env var
+- Add your Figma URL to the dev-loop.js FIGMA_URL or set env var
 
 ### 6. Linear
 - Have your Linear workspace open in browser
@@ -61,7 +61,7 @@ Show:
 
 In Terminal 1 (Orchestrator pane):
 ```bash
-node run-demo.js \
+node dev-loop.js \
   --figma "YOUR_FIGMA_URL" \
   --linear-team "YOUR_TEAM_ID" \
   --linear-key "YOUR_API_KEY"

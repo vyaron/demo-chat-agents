@@ -4,7 +4,7 @@
  * --output-format stream-json and prints every tool call as it happens
  * (file paths read/written, commands run), then a final cost/usage summary.
  *
- * This is deliberately separate from run-demo.js: the dev-loop script uses
+ * This is deliberately separate from dev-loop.js: the dev-loop script uses
  * --output-format json (one buffered blob) so it can write reports cleanly;
  * this script trades that buffering for live, line-by-line visibility into
  * "what did the agent actually do" - the thing the Session 4 concept slide

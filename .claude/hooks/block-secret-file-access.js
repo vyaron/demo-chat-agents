@@ -6,7 +6,7 @@
 // tool_input for every call, so `cat backend/.env`, `Read(.env)`, and
 // `grep -r SUPABASE_SERVICE_KEY .` are all caught the same way.
 //
-// Runs even when CLAUDE_PERMISSION_MODE=bypassPermissions (run-demo.js's
+// Runs even when CLAUDE_PERMISSION_MODE=bypassPermissions (dev-loop.js's
 // default for the FE/BE/QA sub-agents) - hooks are a separate enforcement
 // layer from the permission system, which is exactly why this demo relies
 // on them instead of permissions.deny alone.

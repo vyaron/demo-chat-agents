@@ -3,8 +3,8 @@
 // in agents/frontend/CLAUDE.md and agents/backend/CLAUDE.md. Those files only
 // *ask* the agent to stay in its lane ("Forbidden: backend/**") - nothing
 // stopped it from ignoring that under bypassPermissions. This hook reads the
-// CLAUDE_AGENT_ROLE env var that run-demo.js now sets when it spawns each
-// sub-agent (see runAgent -> spawnClaude in run-demo.js) and blocks any
+// CLAUDE_AGENT_ROLE env var that dev-loop.js now sets when it spawns each
+// sub-agent (see runAgent -> spawnClaude in dev-loop.js) and blocks any
 // Edit/Write outside that role's allowed paths.
 //
 // Orchestrator runs (no CLAUDE_AGENT_ROLE set) and interactive sessions are
