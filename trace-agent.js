@@ -11,6 +11,8 @@
  * is about.
  *
  * Usage:
+ *   node trace-agent.js --task "add dark theme support to the app"
+ * 
  *   node trace-agent.js --task "Implement the contact info page per .plan/000-backlog.md" \
  *     [--system-prompt agents/frontend/CLAUDE.md] [--role frontend]
  *
