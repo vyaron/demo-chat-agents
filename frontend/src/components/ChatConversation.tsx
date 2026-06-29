@@ -5,7 +5,7 @@ import { ChatInput } from "./ChatInput";
 import { SearchInput } from "./SearchInput";
 import { getSocket, joinRoom, leaveRoom, sendSocketMessage, emitTyping } from "../lib/socket";
 
-const API = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:3001" : "")
+const API = import.meta.env.VITE_API_URL || "http://localhost:3001"
 const MY_ID = "demo-user";
 const MY_NAME = "You";
 
@@ -71,12 +71,12 @@ export function ChatConversation({ conversation, onBack }: Props) {
     setSearchQuery(query);
     setSearchLoading(true);
 
+    const url = `${API}/api/conversations/${conversation.id}/messages/search?q=${encodeURIComponent(
+      query
+    )}`;
+
     try {
-      const response = await fetch(
-        `${API}/api/conversations/${conversation.id}/messages/search?q=${encodeURIComponent(
-          query
-        )}`
-      );
+      const response = await fetch(url);
       if (response.ok) {
         const results = await response.json();
         setFilteredMessages(results);

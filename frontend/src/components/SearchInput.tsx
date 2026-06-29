@@ -23,7 +23,9 @@ export function SearchInput({ onSearch, isLoading = false, resultCount }: Props)
     }
 
     debounceTimer.current = setTimeout(() => {
-      onSearchRef.current(query);
+      if (typeof onSearchRef.current === "function") {
+        onSearchRef.current(query);
+      }
     }, 300);
 
     return () => {
