@@ -4,10 +4,16 @@ let socket: Socket | null = null;
 
 export function getSocket(): Socket {
   if (!socket) {
-    socket = io(import.meta.env.VITE_API_URL || "http://localhost:3001", {
-      autoConnect: true,
-      reconnectionAttempts: 5,
-    });
+    const apiUrl = import.meta.env.VITE_API_URL
+    socket = apiUrl
+      ? io(apiUrl, {
+        autoConnect: true,
+        reconnectionAttempts: 5,
+      })
+      : io({
+        autoConnect: true,
+        reconnectionAttempts: 5,
+      })
   }
   return socket;
 }

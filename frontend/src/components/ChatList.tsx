@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Conversation } from "../types";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:3001";
+const API = import.meta.env.VITE_API_URL || "";
 
 interface Props {
   onSelect: (conversation: Conversation) => void;

@@ -4,7 +4,9 @@
   "scripts": {
     "dev": "nodemon --exec tsx src/index.ts",
     "start": "node dist/index.js",
-    "build": "tsc",
+    "build": "npm run build:server && npm run build:frontend",
+    "build:server": "tsc",
+    "build:frontend": "npm --prefix ../frontend install && npm --prefix ../frontend run build && node scripts/copy-frontend-dist.mjs",
     "test": "vitest run"
   },
   "dependencies": {

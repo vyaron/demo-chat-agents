@@ -4,7 +4,7 @@ import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 import { getSocket, joinRoom, leaveRoom, sendSocketMessage, emitTyping } from "../lib/socket";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:3001";
+const API = import.meta.env.VITE_API_URL || "";
 const MY_ID = "demo-user";
 const MY_NAME = "You";
 
