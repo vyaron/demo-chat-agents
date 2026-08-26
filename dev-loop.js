@@ -27,12 +27,29 @@ const CLAUDE_ALLOWED_TOOLS = process.env.CLAUDE_ALLOWED_TOOLS || getArg("--claud
 
 const PLAN_DIR = ".plan"
 const BACKLOG_FILE = `${PLAN_DIR}/000-backlog.md`
-const LATEST_PLAN_FILE = "docs/PLAN.md"
-const TICKETS_FILE = "docs/tickets.json"
-const FE_REPORT = "docs/frontend-agent-report.md"
-const BE_REPORT = "docs/backend-agent-report.md"
-const QA_REPORT = "docs/qa-report.md"
-const TRACE_FILE = "docs/trace.json"
+
+// Everything the loop generates lives in .orchestrate/ (gitignored, see its
+// README). These paths must stay in step with the "Allowed paths" in
+// .claude/agents/*.md and ALLOWED_WRITE_PREFIXES in
+// .claude/hooks/enforce-agent-boundaries.js — if they drift, the boundary hook
+// blocks an agent from writing the very report the loop then waits for.
+const ORCHESTRATE_DIR = ".orchestrate"
+const LATEST_PLAN_FILE = `${ORCHESTRATE_DIR}/PLAN.md`
+const TICKETS_FILE = `${ORCHESTRATE_DIR}/tickets.json`
+const FE_REPORT = `${ORCHESTRATE_DIR}/frontend-agent-report.md`
+const BE_REPORT = `${ORCHESTRATE_DIR}/backend-agent-report.md`
+const QA_REPORT = `${ORCHESTRATE_DIR}/qa-report.md`
+const API_CONTRACT = `${ORCHESTRATE_DIR}/api-contract.yaml`
+const TRACE_FILE = `${ORCHESTRATE_DIR}/trace.json`
+
+// Sub-agent definitions. Passed with --system-prompt-file (a path), NOT
+// --system-prompt (which takes the prompt text itself).
+const AGENT_PROMPT = {
+  orchestrator: ".claude/agents/orchestrator.md",
+  frontend: ".claude/agents/frontend.md",
+  backend: ".claude/agents/backend.md",
+  qa: ".claude/agents/qa.md",
+}
 
 // Cost/observability: one entry per Claude CLI call this loop iteration.
 // Populated by recordCost(), printed by printCostTable(), reset per task.
@@ -42,8 +59,9 @@ async function main() {
   banner("QUICKCHAT DEMO — DEV LOOP")
 
   ensurePlanDirAndBacklog()
+  ensureOrchestrateDir()
 
-  const prd = readFileSync("docs/PRD.md", "utf-8")
+  const prd = readProductDefinition()
   const linearClient = LINEAR_KEY ? createLinearClient(LINEAR_KEY) : null
   const linearStates = linearClient && LINEAR_TEAM ? await getTeamStates(linearClient, LINEAR_TEAM) : null
 
@@ -101,8 +119,8 @@ async function main() {
     }
 
     await runAgent({
-      systemPrompt: "agents/frontend/CLAUDE.md",
-      input: `You are the Frontend Agent.\nTask: ${task.title}\nLinear ticket: ${tickets.frontend.url}${task.figmaUrl || FIGMA_URL ? `\nFigma: ${task.figmaUrl || FIGMA_URL}` : ""}\nApproved plan: ${planPath}\nFollow your CLAUDE.md instructions exactly.\nEnd your final response with exact line: STATUS: DONE`,
+      systemPrompt: AGENT_PROMPT.frontend,
+      input: `You are the Frontend Agent.\nTask: ${task.title}\nLinear ticket: ${tickets.frontend.url}${task.figmaUrl || FIGMA_URL ? `\nFigma: ${task.figmaUrl || FIGMA_URL}` : ""}\nApproved plan: ${planPath}\nAPI contract to write: ${API_CONTRACT}\nWrite your report to ${FE_REPORT}.\nFollow your agent instructions exactly.\nEnd your final response with exact line: STATUS: DONE`,
       outputFile: FE_REPORT,
       doneMarker: "STATUS: DONE",
       label: "Frontend Agent",
@@ -117,8 +135,8 @@ async function main() {
     }
 
     await runAgent({
-      systemPrompt: "agents/backend/CLAUDE.md",
-      input: `You are the Backend Agent.\nTask: ${task.title}\nLinear ticket: ${tickets.backend.url}\nApproved plan: ${planPath}\nAPI contract: docs/api-contract.yaml\nFollow your CLAUDE.md instructions exactly.\nEnd your final response with exact line: STATUS: DONE`,
+      systemPrompt: AGENT_PROMPT.backend,
+      input: `You are the Backend Agent.\nTask: ${task.title}\nLinear ticket: ${tickets.backend.url}\nApproved plan: ${planPath}\nAPI contract: ${API_CONTRACT}\nWrite your report to ${BE_REPORT}.\nFollow your agent instructions exactly.\nEnd your final response with exact line: STATUS: DONE`,
       outputFile: BE_REPORT,
       doneMarker: "STATUS: DONE",
       label: "Backend Agent",
@@ -133,8 +151,8 @@ async function main() {
     }
 
     await runAgent({
-      systemPrompt: "agents/qa/CLAUDE.md",
-      input: `You are the QA Agent.\nTask: ${task.title}\nLinear ticket: ${tickets.qa.url}\nApproved plan: ${planPath}\nRun validation across frontend, backend, and e2e.\nWrite docs/qa-report.md and end final response with exact line: STATUS: DONE`,
+      systemPrompt: AGENT_PROMPT.qa,
+      input: `You are the QA Agent.\nTask: ${task.title}\nLinear ticket: ${tickets.qa.url}\nApproved plan: ${planPath}\nRun validation across frontend, backend, and e2e.\nWrite ${QA_REPORT} and end final response with exact line: STATUS: DONE`,
       outputFile: QA_REPORT,
       doneMarker: "STATUS: DONE",
       label: "QA Agent",
@@ -218,6 +236,26 @@ function printCostTable() {
   log(`Trace written: ${TRACE_FILE}`)
 
   costLog = []
+}
+
+// The agents write their reports here, and the boundary hook only allows those
+// writes under .orchestrate/ — so the directory has to exist before the first
+// agent runs, not just before the loop writes tickets.json.
+function ensureOrchestrateDir() {
+  if (!existsSync(ORCHESTRATE_DIR)) {
+    mkdirSync(ORCHESTRATE_DIR, { recursive: true })
+  }
+}
+
+// The product definition is the PRD for planning purposes. `.doc/` holds the
+// hand-written sources (AGENTS.md "Repository Layout"); the old `docs/PRD.md`
+// is only read as a fallback so an un-migrated checkout still runs.
+function readProductDefinition() {
+  for (const candidate of [".doc/product-definition.md", "docs/PRD.md"]) {
+    if (existsSync(candidate)) return readFileSync(candidate, "utf-8")
+  }
+  warn("No product definition found (.doc/product-definition.md) — planning with task title only.")
+  return ""
 }
 
 function ensurePlanDirAndBacklog() {
@@ -339,13 +377,13 @@ async function askClaudeForPlan({ task, prd, figmaUrl, planPath, previousPlans }
     "--model", "claude-opus-4-8",
     "--permission-mode", CLAUDE_PERMISSION_MODE,
     "--add-dir", process.cwd(),
-    "--system-prompt", "agents/orchestrator/CLAUDE.md",
+    "--system-prompt-file", AGENT_PROMPT.orchestrator,
     "--print",
     "--output-format", "json",
   ]
   if (CLAUDE_ALLOWED_TOOLS) args.push("--allowedTools", CLAUDE_ALLOWED_TOOLS)
 
-  const input = `Follow planning rules from .rule/planning-rules.md exactly.
+  const input = `Follow the writing-plans skill (.claude/skills/writing-plans/SKILL.md) exactly.
 
 Task selected from backlog:
 - title: ${task.title}
@@ -364,7 +402,7 @@ Write the implementation plan to: ${planPath}
 Also print the same plan content to stdout.
 
 Plan requirements:
-- Use required metadata fields and required sections from .rule/planning-rules.md
+- Use the required metadata fields and required sections from the writing-plans skill
 - Status must start as draft
 - Use repository-relative paths only
 - Open Questions section must contain clear questions and recommended answers`
@@ -391,12 +429,12 @@ async function askClaudeToRevisePlan({ task, prd, figmaUrl, planPath, currentPla
     "--model", "claude-opus-4-8",
     "--permission-mode", CLAUDE_PERMISSION_MODE,
     "--add-dir", process.cwd(),
-    "--system-prompt", "agents/orchestrator/CLAUDE.md",
+    "--system-prompt-file", AGENT_PROMPT.orchestrator,
     "--print",
   ]
   if (CLAUDE_ALLOWED_TOOLS) args.push("--allowedTools", CLAUDE_ALLOWED_TOOLS)
 
-  const input = `Follow planning rules from .rule/planning-rules.md exactly.
+  const input = `Follow the writing-plans skill (.claude/skills/writing-plans/SKILL.md) exactly.
 
 Revise this existing plan based on latest user feedback and latest plan-file edits.
 
@@ -467,7 +505,7 @@ async function askClaudeToCreateTickets({ teamId, task, planPath }) {
     "--model", "claude-opus-4-8",
     "--permission-mode", CLAUDE_PERMISSION_MODE,
     "--add-dir", process.cwd(),
-    "--system-prompt", "agents/orchestrator/CLAUDE.md",
+    "--system-prompt-file", AGENT_PROMPT.orchestrator,
     "--print",
   ]
   if (CLAUDE_ALLOWED_TOOLS) args.push("--allowedTools", CLAUDE_ALLOWED_TOOLS)
@@ -652,18 +690,20 @@ async function runAgent({ systemPrompt, input, outputFile, doneMarker, label, ro
     "--model", "claude-opus-4-8",
     "--permission-mode", CLAUDE_PERMISSION_MODE,
     "--add-dir", process.cwd(),
-    "--system-prompt", systemPrompt,
+    "--system-prompt-file", systemPrompt,
     "--print",
     "--output-format", "json",
   ]
   if (CLAUDE_ALLOWED_TOOLS) args.push("--allowedTools", CLAUDE_ALLOWED_TOOLS)
 
   log(`${label}: launching Claude with permission mode '${CLAUDE_PERMISSION_MODE}'.`)
-  // CLAUDE_AGENT_ROLE is read by .claude/hooks/enforce-agent-boundaries.js so the
-  // frontend/backend path boundaries in agents/*/CLAUDE.md are actually enforced,
-  // not just requested — this matters because CLAUDE_PERMISSION_MODE defaults to
+  // AGENT_ROLE is read by .claude/hooks/enforce-agent-boundaries.js so the
+  // per-role "Allowed paths" in .claude/agents/*.md are actually enforced, not
+  // just requested — this matters because CLAUDE_PERMISSION_MODE defaults to
   // bypassPermissions for this demo, so hooks are the only real guardrail left.
-  const rawStdout = await spawnClaude(args, input, role ? { CLAUDE_AGENT_ROLE: role } : {})
+  // The name must stay in step with that hook and with AGENTS.md; renaming it on
+  // one side only makes the hook fail OPEN, silently.
+  const rawStdout = await spawnClaude(args, input, role ? { AGENT_ROLE: role } : {})
 
   if (rawStdout === null) {
     warn(`${label}: Claude not available or failed — simulating output.`)

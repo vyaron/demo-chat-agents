@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { supabase } from "../lib/supabase";
+import { sendUpstreamError } from "../lib/error";
 
 export const conversationsRouter = Router();
 
@@ -12,7 +13,7 @@ conversationsRouter.get("/", async (_req, res) => {
     `)
     .order("created_at", { ascending: false });
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return sendUpstreamError(res, "conversation.list", error)
 
   const enriched = (data ?? []).map((c: any) => {
     const msgs: any[] = c.messages ?? [];

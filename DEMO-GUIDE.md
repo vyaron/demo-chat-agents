@@ -54,7 +54,7 @@ cd frontend && npm run dev
 > Watch what happens when we have an agent team instead."
 
 Show:
-- `docs/PRD.md` briefly (the requirements)
+- `.doc/product-definition.md` briefly (the requirements)
 - The Figma designs briefly
 
 ### Run the Orchestrator (3 min)
