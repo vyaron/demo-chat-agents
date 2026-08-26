@@ -43,13 +43,13 @@ const mockMessages: Message[] = [
 
 describe("ChatConversation - Search State", () => {
   beforeEach(() => {
-    global.fetch = vi.fn();
+    globalThis.fetch = vi.fn();
     // Mock scrollIntoView for jsdom
     Element.prototype.scrollIntoView = vi.fn();
   });
 
   it("displays search input", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => mockMessages,
     });
@@ -67,7 +67,7 @@ describe("ChatConversation - Search State", () => {
   });
 
   it("shows all messages by default (no search)", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => mockMessages,
     });
@@ -87,7 +87,7 @@ describe("ChatConversation - Search State", () => {
 
   it("calls search endpoint when user searches", async () => {
     let callCount = 0;
-    global.fetch = vi.fn((url) => {
+    globalThis.fetch = vi.fn((url) => {
       callCount++;
       if (url.includes("/messages/search")) {
         return Promise.resolve({
@@ -114,7 +114,7 @@ describe("ChatConversation - Search State", () => {
     // Wait for debounce and API call
     await waitFor(
       () => {
-        expect(global.fetch).toHaveBeenCalledWith(
+        expect(globalThis.fetch).toHaveBeenCalledWith(
           expect.stringContaining("/messages/search?q=Hello")
         );
       },
@@ -123,7 +123,7 @@ describe("ChatConversation - Search State", () => {
   });
 
   it("displays result count when searching", async () => {
-    global.fetch = vi.fn((url) => {
+    globalThis.fetch = vi.fn((url) => {
       if (url.includes("/messages/search")) {
         return Promise.resolve({
           ok: true,
@@ -152,7 +152,7 @@ describe("ChatConversation - Search State", () => {
   });
 
   it("clears search and shows all messages when clear button is clicked", async () => {
-    global.fetch = vi.fn((url) => {
+    globalThis.fetch = vi.fn((url) => {
       if (url.includes("/messages/search")) {
         return Promise.resolve({
           ok: true,
@@ -188,7 +188,7 @@ describe("ChatConversation - Search State", () => {
   });
 
   it("handles search with no results", async () => {
-    global.fetch = vi.fn((url) => {
+    globalThis.fetch = vi.fn((url) => {
       if (url.includes("/messages/search")) {
         return Promise.resolve({
           ok: true,
@@ -217,7 +217,7 @@ describe("ChatConversation - Search State", () => {
   });
 
   it("hides input area when search is active", async () => {
-    global.fetch = vi.fn((url) => {
+    globalThis.fetch = vi.fn((url) => {
       if (url.includes("/messages/search")) {
         return Promise.resolve({
           ok: true,
