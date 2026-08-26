@@ -32,7 +32,11 @@ instant and never lose a message in the process.
 - **Screen 1 — Chat list**: header (`QuickChat` + avatar), search box, and a list of
   conversations showing avatar, name, truncated last-message preview, timestamp, and an
   unread badge when `unread_count > 0`. Selecting a conversation opens Screen 2.
-- **Screen 2 — Conversation**: back arrow, contact avatar, name, online indicator; a
+- **Screen 2 — Conversation**: a light `#F6F6F6` top bar (Figma "Contact Actions")
+  with a back chevron, contact avatar, contact name, a `tap here for contact info`
+  subtitle, and video-call / voice-call buttons. The subtitle replaces the earlier
+  "online indicator": presence is not tracked in v1, so an online dot would have been
+  decorative. The call buttons are visual only — calling is out of scope. Then a
   scrollable message list with own messages right-aligned in green (`#25D366`) and others
   left-aligned in white; per-bubble `HH:MM` timestamp; date separators ("Today",
   "Yesterday"); a pinned input with placeholder "Message" and a send button enabled only
