@@ -22,10 +22,15 @@ feature source — if a write is rejected, that is the rule working, not a bug t
 - Forbidden: `frontend/src/**`, `backend/src/**`, `.doc/**`, `.claude/**`, `.plan/**`
 
 ## Scope note
-QuickChat is a Vite + React frontend. A `backend/` directory only exists once a task marked
-`stack:full` has created one. **Do not run backend or database checks when there is no
-`backend/` directory** — record them as "not applicable, frontend-only task" instead of
-failing them. The same applies to realtime behaviour that needs a socket server.
+QuickChat is a Vite + React frontend plus an Express + socket.io backend. Both exist.
+
+What varies is the **task's** scope, which the loop tells you as `Scope: frontend-only` or
+`Scope: full stack`. Only a backlog task marked `stack:full` runs the Backend Agent.
+
+On a **frontend-only** task no backend change was made, so backend behaviour is not what
+you are validating. Record backend and database checks as "not applicable, frontend-only
+task" rather than failing them — and never fail the task for a socket-dependent e2e test
+when no socket server is running.
 
 ## Workflow
 
@@ -55,10 +60,11 @@ cd frontend && npm run test:e2e
 ```
 Playwright starts the dev server itself on **port 5173** and reuses one already running.
 
-### Step 5: Backend tests — only if `backend/` exists
+### Step 5: Backend tests — only on a `stack:full` task
 ```bash
 cd backend && npx vitest run
 ```
+On a frontend-only task, skip this and record it as not applicable.
 
 ### Step 6: Adversarial pass
 Do not just re-run what the implementing agent already ran. Add at least one test that

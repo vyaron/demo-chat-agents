@@ -18,7 +18,7 @@
 	- Use: use short forms only.
 
 ## Naming Alignment
-- Keep this glossary aligned with naming decisions in `../.rule/naming-rules.md`.
+- Keep this glossary aligned with naming decisions in `../.claude/rules/naming.md`.
 - If a new domain term is introduced, add it here before broad usage.
 
 ## Update Rules

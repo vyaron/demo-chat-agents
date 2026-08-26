@@ -15,25 +15,27 @@ Guardrails source of truth: follow `AGENTS.md`. Hook logic lives in `.claude/hoo
 wired into the runtime by `.claude/settings.json`. The boundary hook will hard-block any
 write outside your allowed paths.
 
-## Read this first — this product is frontend-only by default
-QuickChat ships as a Vite + React frontend; `.doc/product-definition.md` and the current
-`.plan/` entries scope it that way. `dev-loop.js` only launches you for a backlog task
-explicitly marked `stack:full` — for example "Messages search - full stack feature".
+## Read this first — `backend/` already exists
+You are **extending a working service, not scaffolding one.** `backend/` ships an Express
+API with `src/routes/conversations.ts` and `src/routes/messages.ts`, a socket.io layer in
+`src/socket/chat.ts`, Supabase persistence in `src/lib/supabase.ts`, shared error helpers in
+`src/lib/error.ts`, and a passing Supertest suite in `tests/api.test.ts`. Read what is there
+before you add anything, and match the existing file names even where they are plural.
 
-So: **you are the first backend, or you are extending a very young one.** Check whether
-`backend/` exists before assuming anything about it.
+`dev-loop.js` only launches you for a backlog task explicitly marked `stack:full` in
+`.plan/000-backlog.md`. On a frontend-only task you never run, and the Frontend Agent's
+`.orchestrate/api-contract.yaml` is left as a handoff artifact for a later full-stack task.
 
-## Stack
+## Stack — already installed, do not re-scaffold
 - Node.js 20 + TypeScript, ESM (`"type": "module"`, matching the repo root)
-- Express 5
+- Express 4 (`^4.21.2` — check `backend/package.json` before using Express 5 APIs)
 - Vitest (unit) + Supertest (HTTP integration)
 - Realtime: `socket.io` — the frontend already speaks it via `frontend/src/lib/socket.ts`
   and expects the events emitted there (`join_room`, `leave_room`, `send_message`) on
   `VITE_API_URL`, which defaults to `http://localhost:3001` in dev. Match that port.
-- Persistence: whatever the approved plan specifies. `@supabase/supabase-js` is already a
-  frontend dependency, so Supabase is the presumed direction — but if the plan does not
-  specify one, use an in-memory store and say so in your report. Do not introduce a
-  database the plan never approved.
+- Persistence: Supabase, already wired in `src/lib/supabase.ts` (it throws at startup
+  without `SUPABASE_URL` / `SUPABASE_SERVICE_KEY`). Use it. Do not introduce a second
+  datastore the plan never approved.
 
 ## Allowed paths
 - Read/Write: `backend/**`
@@ -50,16 +52,10 @@ Cross-check it against `frontend/src/types/index.ts` (`Conversation`, `Message`)
 payload shapes match the types the UI already consumes — including their snake_case
 field names (`conversation_id`, `sender_id`, `created_at`).
 
-### Step 2: Scaffold only if `backend/` does not exist
-```bash
-mkdir backend && cd backend
-npm init -y
-npm install express cors dotenv
-npm install -D typescript tsx @types/express @types/node
-npm install -D vitest supertest @types/supertest
-npx tsc --init
-```
-Set `"type": "module"` in `backend/package.json`.
+### Step 2: Read the existing service
+`backend/` is already scaffolded and its tests pass. Never run `npm init`, `npx tsc --init`,
+or re-install the toolchain — you would overwrite a working setup. Read `src/index.ts` to
+see how routes and sockets are wired, and add to that wiring rather than replacing it.
 
 ### Step 3: Implement
 Follow `.claude/rules/code-style.md` (no trailing semicolons) and `.claude/rules/naming.md`

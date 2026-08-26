@@ -76,6 +76,7 @@ async function main() {
     loopCount += 1
     banner(`LOOP ${loopCount} · ${task.title}`)
     log(`Picked task from backlog: ${task.title}`)
+    log(`Scope: ${task.scope}${task.isFullStack ? "" : " (no 'stack:full' marker — the Backend Agent will not run)"}`)
 
     const branchName = `feat/${task.slug}`
     createGitBranch(branchName)
@@ -110,7 +111,7 @@ async function main() {
       writeFileSync(TICKETS_FILE, JSON.stringify(tickets, null, 2))
     } else {
       warn("No Linear configured. Using simulated tickets after terminal approval.")
-      tickets = simulateTickets(task.slug)
+      tickets = simulateTickets(task)
       writeFileSync(TICKETS_FILE, JSON.stringify(tickets, null, 2))
     }
 
@@ -127,32 +128,38 @@ async function main() {
       role: "frontend",
     })
 
+    // The next stage is the Backend Agent on a stack:full task, QA otherwise.
+    const afterFrontend = task.isFullStack ? tickets.backend : tickets.qa
     if (linearClient && linearStates?.done) {
       await updateLinearIssue(linearClient, tickets.frontend.issueId, { stateId: linearStates.done })
       if (linearStates.inProgress) {
-        await updateLinearIssue(linearClient, tickets.backend.issueId, { stateId: linearStates.inProgress })
+        await updateLinearIssue(linearClient, afterFrontend.issueId, { stateId: linearStates.inProgress })
       }
     }
 
-    await runAgent({
-      systemPrompt: AGENT_PROMPT.backend,
-      input: `You are the Backend Agent.\nTask: ${task.title}\nLinear ticket: ${tickets.backend.url}\nApproved plan: ${planPath}\nAPI contract: ${API_CONTRACT}\nWrite your report to ${BE_REPORT}.\nFollow your agent instructions exactly.\nEnd your final response with exact line: STATUS: DONE`,
-      outputFile: BE_REPORT,
-      doneMarker: "STATUS: DONE",
-      label: "Backend Agent",
-      role: "backend",
-    })
+    if (task.isFullStack) {
+      await runAgent({
+        systemPrompt: AGENT_PROMPT.backend,
+        input: `You are the Backend Agent.\nTask: ${task.title}\nLinear ticket: ${tickets.backend.url}\nApproved plan: ${planPath}\nAPI contract: ${API_CONTRACT}\nWrite your report to ${BE_REPORT}.\nFollow your agent instructions exactly.\nEnd your final response with exact line: STATUS: DONE`,
+        outputFile: BE_REPORT,
+        doneMarker: "STATUS: DONE",
+        label: "Backend Agent",
+        role: "backend",
+      })
 
-    if (linearClient && linearStates?.done) {
-      await updateLinearIssue(linearClient, tickets.backend.issueId, { stateId: linearStates.done })
-      if (linearStates.inProgress) {
-        await updateLinearIssue(linearClient, tickets.qa.issueId, { stateId: linearStates.inProgress })
+      if (linearClient && linearStates?.done) {
+        await updateLinearIssue(linearClient, tickets.backend.issueId, { stateId: linearStates.done })
+        if (linearStates.inProgress) {
+          await updateLinearIssue(linearClient, tickets.qa.issueId, { stateId: linearStates.inProgress })
+        }
       }
+    } else {
+      log("Frontend-only task (no 'stack:full' marker) — skipping the Backend Agent.")
     }
 
     await runAgent({
       systemPrompt: AGENT_PROMPT.qa,
-      input: `You are the QA Agent.\nTask: ${task.title}\nLinear ticket: ${tickets.qa.url}\nApproved plan: ${planPath}\nRun validation across frontend, backend, and e2e.\nWrite ${QA_REPORT} and end final response with exact line: STATUS: DONE`,
+      input: `You are the QA Agent.\nTask: ${task.title}\nScope: ${task.scope}\nLinear ticket: ${tickets.qa.url}\nApproved plan: ${planPath}\n${task.isFullStack ? "Run validation across frontend, backend, and e2e." : "This is a frontend-only task: no backend work was done for it. Validate the frontend and e2e only, and record backend checks as not applicable."}\nWrite ${QA_REPORT} and end final response with exact line: STATUS: DONE`,
       outputFile: QA_REPORT,
       doneMarker: "STATUS: DONE",
       label: "QA Agent",
@@ -296,13 +303,21 @@ function getNextBacklogTask() {
     const title = parts[0]
 
     let figmaUrl = ""
+    let stack = ""
     for (const p of parts.slice(1)) {
       const kv = p.split(":")
       if (kv.length < 2) continue
       const key = kv[0].trim().toLowerCase()
       const value = kv.slice(1).join(":").trim()
       if (key === "figma") figmaUrl = value
+      if (key === "stack") stack = value.toLowerCase()
     }
+
+    // Scope marker. A task is frontend-only unless the backlog line opts in with
+    // `| stack:full` — that is the single switch that decides whether a backend
+    // ticket is created and whether the Backend Agent runs at all. Prose in the
+    // title ("- full stack feature") is not enough; the marker has to be there.
+    const isFullStack = stack === "full"
 
     return {
       lineIndex: i,
@@ -310,6 +325,8 @@ function getNextBacklogTask() {
       title,
       slug: slugify(title),
       figmaUrl,
+      isFullStack,
+      scope: isFullStack ? "full stack" : "frontend-only",
     }
   }
 
@@ -388,7 +405,12 @@ async function askClaudeForPlan({ task, prd, figmaUrl, planPath, previousPlans }
 Task selected from backlog:
 - title: ${task.title}
 - slug: ${task.slug}
+- scope: ${task.scope}
 ${figmaTaskLine}
+
+${task.isFullStack
+      ? "This task is marked stack:full, so backend work is in scope and a Backend Agent will run after the Frontend Agent."
+      : "This task is frontend-only. No Backend Agent will run for it, so do not plan server, API, or database work. If the feature needs data the frontend cannot serve, record that in Open Questions as a follow-up stack:full task."}
 
 Existing plans in .plan:
 ${prevList}
@@ -510,36 +532,45 @@ async function askClaudeToCreateTickets({ teamId, task, planPath }) {
   ]
   if (CLAUDE_ALLOWED_TOOLS) args.push("--allowedTools", CLAUDE_ALLOWED_TOOLS)
 
-  const input = `Using your Linear tool, create three issues in team ${teamId} for this task:
+  // A frontend-only task gets no backend ticket — asking for one would put a
+  // ticket on the board that no agent in this run will ever pick up.
+  const ticketList = task.isFullStack
+    ? "1) Frontend implementation ticket\n2) Backend implementation ticket\n3) QA / E2E validation ticket"
+    : "1) Frontend implementation ticket\n2) QA / E2E validation ticket\n\nDo NOT create a backend ticket: this task is frontend-only."
+  const shape = task.isFullStack
+    ? `{"frontend":{"id":"<identifier>","issueId":"<uuid>","url":"<url>"},"backend":{"id":"<identifier>","issueId":"<uuid>","url":"<url>"},"qa":{"id":"<identifier>","issueId":"<uuid>","url":"<url>"}}`
+    : `{"frontend":{"id":"<identifier>","issueId":"<uuid>","url":"<url>"},"qa":{"id":"<identifier>","issueId":"<uuid>","url":"<url>"}}`
+
+  const input = `Using your Linear tool, create issues in team ${teamId} for this task:
 - ${task.title}
+- scope: ${task.scope}
 
 Plan file: ${planPath}
 Plan content:
 ${plan}
 
 Create exactly:
-1) Frontend implementation ticket
-2) Backend implementation ticket
-3) QA / E2E validation ticket
+${ticketList}
 
 Use Todo state and medium priority.
 
 Output exactly this block and nothing else around it:
 TICKETS_JSON
-{"frontend":{"id":"<identifier>","issueId":"<uuid>","url":"<url>"},"backend":{"id":"<identifier>","issueId":"<uuid>","url":"<url>"},"qa":{"id":"<identifier>","issueId":"<uuid>","url":"<url>"}}
+${shape}
 END_TICKETS_JSON`
 
   const stdout = await spawnClaude(args, input)
   if (!stdout) return null
-  return parseTicketsFromOutput(stdout)
+  return parseTicketsFromOutput(stdout, { requireBackend: task.isFullStack })
 }
 
-function parseTicketsFromOutput(stdout) {
+function parseTicketsFromOutput(stdout, { requireBackend } = {}) {
   const match = stdout.match(/TICKETS_JSON\s*\n({[\s\S]+?})\s*\nEND_TICKETS_JSON/)
   if (!match) return null
   try {
     const parsed = JSON.parse(match[1])
-    if (!parsed.frontend || !parsed.backend || !parsed.qa) return null
+    if (!parsed.frontend || !parsed.qa) return null
+    if (requireBackend && !parsed.backend) return null
     return parsed
   } catch {
     return null
@@ -621,14 +652,17 @@ async function createLinearTickets({ client, teamId, states, task, planPath }) {
   const summary = plan.split("\n").slice(0, 40).join("\n")
 
   const fe = await createIssue(`[DEVLOOP][FE] ${task.title}`, `Implement frontend scope for:\n${task.title}\n\nPlan: ${planPath}\n\n${summary}`)
-  const be = await createIssue(`[DEVLOOP][BE] ${task.title}`, `Implement backend scope for:\n${task.title}\n\nPlan: ${planPath}\n\n${summary}`)
+  const be = task.isFullStack
+    ? await createIssue(`[DEVLOOP][BE] ${task.title}`, `Implement backend scope for:\n${task.title}\n\nPlan: ${planPath}\n\n${summary}`)
+    : null
   const qa = await createIssue(`[DEVLOOP][QA] ${task.title}`, `Validate feature and run E2E for:\n${task.title}\n\nPlan: ${planPath}`)
 
-  return {
+  const tickets = {
     frontend: { id: fe.identifier, issueId: fe.id, url: fe.url },
-    backend: { id: be.identifier, issueId: be.id, url: be.url },
     qa: { id: qa.identifier, issueId: qa.id, url: qa.url },
   }
+  if (be) tickets.backend = { id: be.identifier, issueId: be.id, url: be.url }
+  return tickets
 }
 
 async function getLinearIssueState(client, issueId) {
@@ -676,13 +710,16 @@ async function updateLinearIssue(client, issueId, input) {
   await client.graphql(query, { issueId, input })
 }
 
-function simulateTickets(slug) {
-  const up = slug.toUpperCase().replace(/[^A-Z0-9]/g, "") || "TASK"
-  return {
+function simulateTickets(task) {
+  const up = task.slug.toUpperCase().replace(/[^A-Z0-9]/g, "") || "TASK"
+  const tickets = {
     frontend: { id: `${up}-FE`, issueId: "sim-fe", url: `https://linear.app/demo/issue/${up}-FE` },
-    backend: { id: `${up}-BE`, issueId: "sim-be", url: `https://linear.app/demo/issue/${up}-BE` },
     qa: { id: `${up}-QA`, issueId: "sim-qa", url: `https://linear.app/demo/issue/${up}-QA` },
   }
+  if (task.isFullStack) {
+    tickets.backend = { id: `${up}-BE`, issueId: "sim-be", url: `https://linear.app/demo/issue/${up}-BE` }
+  }
+  return tickets
 }
 
 async function runAgent({ systemPrompt, input, outputFile, doneMarker, label, role }) {

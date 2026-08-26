@@ -26,7 +26,7 @@ You can paste this into Copilot Chat or reference it via `@workspace /file:dev-l
 - Use your shell tool to create and checkout a new branch named `feat/<task-slug>`.
 
 ### 3. Planning & Human Gate (APPROVE)
-- Generate a markdown plan in the `.plan/` directory following `.rule/planning-rules.md` and referencing the Figma data.
+- Generate a markdown plan in the `.plan/` directory following `.claude/skills/writing-plans/SKILL.md` and referencing the Figma data.
 - **CRITICAL**: Do NOT proceed until the human approves. Use the `ask_user` tool to present the plan and ask: *"Type APPROVED to continue, or provide feedback to revise the plan."*
 - If the user provides feedback, revise the plan and loop the `ask_user` approval gate.
 

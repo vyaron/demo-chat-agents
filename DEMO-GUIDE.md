@@ -83,27 +83,44 @@ APPROVED
 ### Linear Tickets (1 min)
 
 The script creates tickets. Switch to browser — show Linear.
-> "Two tickets created. CHAT-BE is blocked — it depends on the frontend
-> agent finishing and defining the API contract first."
+
+**Which tickets appear depends on the task's scope.** A backlog line marked
+`| stack:full` gets FE + BE + QA; anything else gets FE + QA only, and the
+Backend Agent never runs. The terminal prints the scope right after it picks
+the task, so you can point at it.
+
+The first queued task (`converstaion top bar`) is **frontend-only**:
+> "Two tickets — frontend and QA. No backend ticket, because this task never
+> touches the server. The backlog line is the switch: no `stack:full` marker,
+> no backend agent. Scope is a decision the human makes, not something the
+> agents negotiate."
 
 ### Frontend Agent (4–5 min)
 
 > "The orchestrator now launches the frontend agent with CHAT-FE."
 
 The agent runs in the terminal. Talk through what it's doing as it streams:
-- Scaffolding React + Vite
-- Building components
+- Reading the Figma frame and the plan
+- Building components in the existing Vite app (it does **not** scaffold — the app exists)
 - Writing tests
 - Running Playwright
 
-> "Notice — it defines the API contract before the backend exists.
+> "Notice — it still writes the API contract, even with no backend on this task.
+> That's the handoff artifact a later full-stack task picks up.
 > The frontend agent owns the API shape."
 
 When tests pass, the agent prints `STATUS: DONE`.
 
-### Backend Agent (3–4 min)
+### Backend Agent (3–4 min) — `stack:full` tasks only
 
-> "Frontend agent reported done. Orchestrator automatically unblocks CHAT-BE
+**Skipped on the first task.** The terminal says so explicitly:
+`Frontend-only task (no 'stack:full' marker) — skipping the Backend Agent.`
+That line is worth reading out loud — it's the scope gate working.
+
+To show this stage live, run a second loop iteration on `contact info page` or
+`Conversations search`, both marked `stack:full`:
+
+> "Frontend agent reported done. Orchestrator unblocks CHAT-BE
 > and launches the backend agent."
 
 Point out the backend agent reading `api-contract.yaml`:

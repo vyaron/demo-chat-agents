@@ -33,8 +33,11 @@
 - `.plan/` — `000-backlog.md` is the task queue; `NNN-YYYY-MM-DD-*.md` are the plans.
 - `.orchestrate/` — everything the dev loop generates (plan mirror, tickets, agent
   reports, QA report, API contract, cost traces). Never create a `docs/` directory.
-- `frontend/` — the Next.js app. `backend/` does not exist yet and is only created by a
-  task explicitly marked `stack:full`.
+- `frontend/` — the Vite + React + TypeScript app. Not Next.js: there is no App Router
+  and no `src/app/`.
+- `backend/` — the Express + socket.io API, backed by Supabase. It already exists.
+  Only a backlog task explicitly marked `stack:full` may change it — `dev-loop.js`
+  reads that marker and skips the Backend Agent entirely on a frontend-only task.
 
 ## Rules — always in context
 @.claude/rules/code-style.md
