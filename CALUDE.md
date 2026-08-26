@@ -1,1 +1,0 @@
-reffer to AGENTS.md
