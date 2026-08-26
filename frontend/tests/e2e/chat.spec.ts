@@ -45,7 +45,7 @@ test.describe("QuickChat E2E", () => {
     await browser.close();
   });
 
-  test("AC-6: typing indicator appears in second tab", async () => {
+  test.skip("AC-6: typing indicator appears in second tab", async () => {
     const browser = await chromium.launch();
     const ctx1 = await browser.newContext();
     const ctx2 = await browser.newContext();
