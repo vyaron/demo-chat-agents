@@ -14,14 +14,35 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app);
 
+const isProduction = process.env.NODE_ENV === "production"
+
+const configuredOrigins = (process.env.FRONTEND_URL ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean)
+
+// Vite falls through to the next free port when 5173 is taken, so pinning one
+// dev port here breaks CORS the moment that happens. Outside production, trust
+// any localhost origin. In production the frontend is served from this same
+// origin (see staticDir below), so only FRONTEND_URL is honoured.
+const isLocalhost = (origin: string) =>
+  /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]):\d+$/.test(origin)
+
+const allowOrigin: cors.CorsOptions["origin"] = (origin, callback) => {
+  if (!origin) return callback(null, true)
+  if (configuredOrigins.includes(origin)) return callback(null, true)
+  if (!isProduction && isLocalhost(origin)) return callback(null, true)
+  callback(null, false)
+}
+
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin: allowOrigin,
     methods: ["GET", "POST"],
   },
 });
 
-app.use(cors({ origin: process.env.FRONTEND_URL || "http://localhost:5173" }));
+app.use(cors({ origin: allowOrigin }));
 app.use(express.json());
 
 const staticDirCandidates = [

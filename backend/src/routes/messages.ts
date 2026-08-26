@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { supabase } from "../lib/supabase";
+import { sendUpstreamError, sendValidationError } from "../lib/error";
 
 export const messagesRouter = Router();
 
@@ -12,7 +13,7 @@ messagesRouter.get("/:id/messages", async (req, res) => {
     .eq("conversation_id", id)
     .order("created_at", { ascending: true });
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return sendUpstreamError(res, "message.list", error)
   res.json(data ?? []);
 });
 
@@ -21,10 +22,14 @@ messagesRouter.post("/:id/messages", async (req, res) => {
   const { sender_id, sender_name, content } = req.body;
 
   if (!content?.trim()) {
-    return res.status(400).json({ error: "content is required" });
+    return sendValidationError(res, "content_required", "content is required")
   }
   if (!sender_id || !sender_name) {
-    return res.status(400).json({ error: "sender_id and sender_name are required" });
+    return sendValidationError(
+      res,
+      "sender_required",
+      "sender_id and sender_name are required"
+    )
   }
 
   const { data, error } = await supabase
@@ -33,6 +38,6 @@ messagesRouter.post("/:id/messages", async (req, res) => {
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return sendUpstreamError(res, "message.create", error)
   res.status(201).json(data);
 });
