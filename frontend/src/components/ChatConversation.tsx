@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Conversation, Message } from "../types";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
+import { SearchInput } from "./SearchInput";
 import { getSocket, joinRoom, leaveRoom, sendSocketMessage, emitTyping } from "../lib/socket";
 
-const API = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:3001" : "")
+const API = import.meta.env.VITE_API_URL || "http://localhost:3001"
 const MY_ID = "demo-user";
 const MY_NAME = "You";
 
@@ -18,6 +19,9 @@ export function ChatConversation({ conversation, onBack }: Props) {
   const [loading, setLoading] = useState(true);
   const [typingUser, setTypingUser] = useState<string | null>(null);
   const [disconnected, setDisconnected] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filteredMessages, setFilteredMessages] = useState<Message[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -55,7 +59,37 @@ export function ChatConversation({ conversation, onBack }: Props) {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, typingUser]);
+  }, [filteredMessages, typingUser]);
+
+  const handleSearch = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      setFilteredMessages([]);
+      setSearchQuery("");
+      return;
+    }
+
+    setSearchQuery(query);
+    setSearchLoading(true);
+
+    const url = `${API}/api/conversations/${conversation.id}/messages/search?q=${encodeURIComponent(
+      query
+    )}`;
+
+    try {
+      const response = await fetch(url);
+      if (response.ok) {
+        const results = await response.json();
+        setFilteredMessages(results);
+      } else {
+        setFilteredMessages([]);
+      }
+    } catch (error) {
+      console.error("Search error:", error);
+      setFilteredMessages([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  }, [conversation.id]);
 
   function handleSend(text: string) {
     const optimistic: Message = {
@@ -73,6 +107,9 @@ export function ChatConversation({ conversation, onBack }: Props) {
   function handleTyping() {
     emitTyping(conversation.id, MY_NAME);
   }
+
+  const isSearchActive = searchQuery.length > 0;
+  const displayedMessages = isSearchActive ? filteredMessages : messages;
 
   return (
     <div className="flex flex-col h-full">
@@ -100,22 +137,37 @@ export function ChatConversation({ conversation, onBack }: Props) {
         </div>
       )}
 
+      {/* Search Bar */}
+      <SearchInput
+        onSearch={handleSearch}
+        isLoading={searchLoading}
+        resultCount={isSearchActive ? filteredMessages.length : undefined}
+      />
+
       {/* Messages */}
       <div
         data-testid="message-list"
         className="flex-1 overflow-y-auto px-4 py-3"
         style={{ background: "#ECE5DD url(\"data:image/svg+xml,%3Csvg...%3E\") repeat" }}
       >
-        {loading && (
+        {loading && !isSearchActive && (
           <p className="text-center text-gray-400 text-sm mt-8">Loading messages...</p>
         )}
-        {!loading && messages.length === 0 && (
+        {!loading && messages.length === 0 && !isSearchActive && (
           <p className="text-center text-gray-400 text-sm mt-8">No messages yet. Say hi!</p>
         )}
-        {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} isOwn={m.sender_id === MY_ID} />
+        {isSearchActive && displayedMessages.length === 0 && !searchLoading && (
+          <p className="text-center text-gray-400 text-sm mt-8">No messages match your search.</p>
+        )}
+        {displayedMessages.map((m) => (
+          <MessageBubble
+            key={m.id}
+            message={m}
+            isOwn={m.sender_id === MY_ID}
+            highlightQuery={isSearchActive ? searchQuery : undefined}
+          />
         ))}
-        {typingUser && (
+        {typingUser && !isSearchActive && (
           <div data-testid="typing-indicator" className="flex justify-start mb-1">
             <div className="bg-white rounded-2xl rounded-bl-sm px-4 py-2 shadow-sm">
               <p className="text-xs text-gray-400 italic">{typingUser} is typing...</p>
@@ -125,7 +177,7 @@ export function ChatConversation({ conversation, onBack }: Props) {
         <div ref={bottomRef} />
       </div>
 
-      <ChatInput onSend={handleSend} onTyping={handleTyping} />
+      {!isSearchActive && <ChatInput onSend={handleSend} onTyping={handleTyping} />}
     </div>
   );
 }

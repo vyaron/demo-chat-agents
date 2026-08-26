@@ -9,11 +9,10 @@ Current queue:
 
 
 - [ ] Conversations search - full stack feature
-- [ ] Messages search - full stack feature
 
 
 
 
 ## DONE
 
-
+- [x] Messages search - full stack feature (plan: .plan/001-2026-06-29-messages-search.md)
