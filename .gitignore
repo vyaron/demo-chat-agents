@@ -19,6 +19,12 @@ pnpm-debug.log*
 .env.*
 !.env.example
 
+# Dev-loop generated output — plans mirror, tickets, agent reports, traces.
+# Regenerated every run, so a demo leaves no diff to review. The README is the
+# one hand-written file in there and stays tracked.
+.orchestrate/*
+!.orchestrate/README.md
+
 # Test artifacts
 playwright-report/
 test-results/

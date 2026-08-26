@@ -1,6 +1,9 @@
 {
+  "enabledMcpjsonServers": ["figma", "linear"],
   "permissions": {
     "deny": [
+      "Read(./.env)",
+      "Read(./frontend/.env)",
       "Read(./backend/.env)",
       "Bash(rm -rf *)",
       "Bash(git push --force*)",

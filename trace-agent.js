@@ -14,23 +14,30 @@
  *   node trace-agent.js --task "add dark theme support to the app"
  * 
  *   node trace-agent.js --task "Implement the contact info page per .plan/000-backlog.md" \
- *     [--system-prompt agents/frontend/CLAUDE.md] [--role frontend]
+ *     [--agent .claude/agents/frontend.md] [--role frontend]
  *
- * Defaults to the frontend agent's system prompt if --system-prompt is omitted.
+ * Defaults to the frontend agent's definition if --agent is omitted.
  */
 
 import { spawn, execSync } from "child_process"
-import { writeFileSync } from "fs"
+import { existsSync, mkdirSync, writeFileSync } from "fs"
+import { dirname } from "path"
 import { createInterface } from "readline"
 
 const TASK = getArg("--task")
-const SYSTEM_PROMPT = getArg("--system-prompt") || "agents/frontend/CLAUDE.md"
 const ROLE = getArg("--role") || "frontend"
+// --system-prompt is still accepted as an alias so older demo notes keep working.
+const AGENT_FILE = getArg("--agent") || getArg("--system-prompt") || `.claude/agents/${ROLE}.md`
 const CLAUDE_PERMISSION_MODE = process.env.CLAUDE_PERMISSION_MODE || getArg("--claude-permission-mode") || "bypassPermissions"
-const TRACE_FILE = "docs/trace-live.json"
+const TRACE_FILE = ".orchestrate/trace-live.json"
 
 if (!TASK) {
-  console.error("Usage: node trace-agent.js --task \"<what the agent should do>\" [--system-prompt path] [--role name]")
+  console.error("Usage: node trace-agent.js --task \"<what the agent should do>\" [--agent path] [--role name]")
+  process.exit(1)
+}
+
+if (!existsSync(AGENT_FILE)) {
+  console.error(`Agent definition not found: ${AGENT_FILE}`)
   process.exit(1)
 }
 
@@ -47,7 +54,7 @@ main()
 
 async function main() {
   banner(`LIVE TRACE — ${ROLE} agent`)
-  console.log(`System prompt: ${SYSTEM_PROMPT}`)
+  console.log(`Agent definition: ${AGENT_FILE}`)
   console.log(`Task: ${TASK}`)
   console.log(`Permission mode: ${CLAUDE_PERMISSION_MODE}\n`)
 
@@ -62,13 +69,15 @@ async function main() {
     "--model", "claude-opus-4-8",
     "--permission-mode", CLAUDE_PERMISSION_MODE,
     "--add-dir", process.cwd(),
-    "--system-prompt", SYSTEM_PROMPT,
+    "--system-prompt-file", AGENT_FILE,
     "--print",
     "--verbose",
     "--output-format", "stream-json",
   ]
 
-  const env = { ...process.env, CLAUDE_AGENT_ROLE: ROLE }
+  // Must match .claude/hooks/enforce-agent-boundaries.js and AGENTS.md — a rename
+  // on one side only makes the boundary hook fail open without any error.
+  const env = { ...process.env, AGENT_ROLE: ROLE }
   let child
   if (process.platform === "win32") {
     const command = ["claude", ...args.map(quoteArgForCmd)].join(" ")
@@ -172,6 +181,7 @@ function printSummary(resultEvent, toolCallCount) {
     "Duration": `${(summary.durationMs / 1000).toFixed(1)}s`,
   }])
 
+  mkdirSync(dirname(TRACE_FILE), { recursive: true })
   writeFileSync(TRACE_FILE, JSON.stringify(summary, null, 2), "utf-8")
   console.log(`\nTrace written: ${TRACE_FILE}`)
 }
