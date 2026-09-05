@@ -8,6 +8,10 @@ import { getSocket, joinRoom, leaveRoom, sendSocketMessage, emitTyping } from ".
 const API = import.meta.env.VITE_API_URL || "http://localhost:3001"
 const MY_ID = "demo-user";
 const MY_NAME = "You";
+const AI_ID = "ai"
+// Claude takes seconds, not the two a human keystroke burst does. This is only
+// a safety net for a reply that never arrives at all.
+const AI_TYPING_TIMEOUT_MS = 60_000
 
 interface Props {
   conversation: Conversation;
@@ -34,8 +38,15 @@ export function ChatConversation({ conversation, onBack }: Props) {
     joinRoom(conversation.id);
     const socket = getSocket();
 
+    const clearTyping = () => {
+      if (typingTimer.current) clearTimeout(typingTimer.current)
+      setTypingUser(null)
+    }
+
     socket.on("new_message", (msg: Message) => {
       setMessages((prev) => [...prev, msg]);
+      // The AI's reply ends its turn, so the indicator goes with it.
+      if (msg.sender_id === AI_ID) clearTyping()
     });
 
     socket.on("user_typing", ({ senderName }: { senderName: string }) => {
@@ -45,6 +56,16 @@ export function ChatConversation({ conversation, onBack }: Props) {
       typingTimer.current = setTimeout(() => setTypingUser(null), 2000);
     });
 
+    socket.on("ai_typing", ({ senderName }: { senderName: string }) => {
+      setTypingUser(senderName)
+      if (typingTimer.current) clearTimeout(typingTimer.current)
+      typingTimer.current = setTimeout(() => setTypingUser(null), AI_TYPING_TIMEOUT_MS)
+    })
+
+    // No message is persisted for a failure, so there is nothing to render —
+    // just stop pretending the AI is still composing.
+    socket.on("ai_error", () => clearTyping())
+
     socket.on("disconnect", () => setDisconnected(true));
     socket.on("connect", () => setDisconnected(false));
 
@@ -52,6 +73,8 @@ export function ChatConversation({ conversation, onBack }: Props) {
       leaveRoom(conversation.id);
       socket.off("new_message");
       socket.off("user_typing");
+      socket.off("ai_typing")
+      socket.off("ai_error")
       socket.off("disconnect");
       socket.off("connect");
     };
