@@ -16,6 +16,12 @@
 - `lat` and `lng`
 	- Canonical meaning: latitude and longitude values.
 	- Use: use short forms only.
+- `ai`
+	- Canonical meaning: the Claude-backed non-human participant in a conversation.
+	  It is the literal `@ai` mention trigger, the `sender_id` on its messages, and
+	  the prefix on its socket events (`ai_typing`, `ai_error`).
+	- Use: always use `ai`, never `assistant`, `bot`, or `agent`. `agent` already
+	  means a dev-loop sub-agent in this repository and must not be overloaded.
 
 ## Naming Alignment
 - Keep this glossary aligned with naming decisions in `../.claude/rules/naming.md`.
