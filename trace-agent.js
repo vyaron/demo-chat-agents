@@ -69,7 +69,8 @@ async function main() {
     "--model", "claude-opus-4-8",
     "--permission-mode", CLAUDE_PERMISSION_MODE,
     "--add-dir", process.cwd(),
-    "--system-prompt-file", AGENT_FILE,
+    // Append, not replace — see the AGENT_PROMPT comment in dev-loop.js.
+    "--append-system-prompt-file", AGENT_FILE,
     "--print",
     "--verbose",
     "--output-format", "stream-json",

@@ -42,8 +42,16 @@ const QA_REPORT = `${ORCHESTRATE_DIR}/qa-report.md`
 const API_CONTRACT = `${ORCHESTRATE_DIR}/api-contract.yaml`
 const TRACE_FILE = `${ORCHESTRATE_DIR}/trace.json`
 
-// Sub-agent definitions. Passed with --system-prompt-file (a path), NOT
-// --system-prompt (which takes the prompt text itself).
+// Sub-agent definitions. Passed with --append-system-prompt-file (a path), NOT
+// --append-system-prompt (which takes the prompt text itself).
+//
+// Append, not replace: these files are additive role instructions, not whole
+// system prompts. They give repo-relative paths ("frontend/**"), assume the
+// Claude Code tool conventions, and say things like "use your Figma tool".
+// --system-prompt-file drops the default prompt's environment block, so the
+// agent stops knowing its cwd, OS, and git branch — verified by asking an agent
+// under each flag. (CLAUDE.md/AGENTS.md still loads either way.) The cost is a
+// few thousand extra prompt tokens per call, which the cost table below reports.
 const AGENT_PROMPT = {
   orchestrator: ".claude/agents/orchestrator.md",
   frontend: ".claude/agents/frontend.md",
@@ -394,7 +402,7 @@ async function askClaudeForPlan({ task, prd, figmaUrl, planPath, previousPlans }
     "--model", "claude-opus-4-8",
     "--permission-mode", CLAUDE_PERMISSION_MODE,
     "--add-dir", process.cwd(),
-    "--system-prompt-file", AGENT_PROMPT.orchestrator,
+    "--append-system-prompt-file", AGENT_PROMPT.orchestrator,
     "--print",
     "--output-format", "json",
   ]
@@ -451,7 +459,7 @@ async function askClaudeToRevisePlan({ task, prd, figmaUrl, planPath, currentPla
     "--model", "claude-opus-4-8",
     "--permission-mode", CLAUDE_PERMISSION_MODE,
     "--add-dir", process.cwd(),
-    "--system-prompt-file", AGENT_PROMPT.orchestrator,
+    "--append-system-prompt-file", AGENT_PROMPT.orchestrator,
     "--print",
   ]
   if (CLAUDE_ALLOWED_TOOLS) args.push("--allowedTools", CLAUDE_ALLOWED_TOOLS)
@@ -527,7 +535,7 @@ async function askClaudeToCreateTickets({ teamId, task, planPath }) {
     "--model", "claude-opus-4-8",
     "--permission-mode", CLAUDE_PERMISSION_MODE,
     "--add-dir", process.cwd(),
-    "--system-prompt-file", AGENT_PROMPT.orchestrator,
+    "--append-system-prompt-file", AGENT_PROMPT.orchestrator,
     "--print",
   ]
   if (CLAUDE_ALLOWED_TOOLS) args.push("--allowedTools", CLAUDE_ALLOWED_TOOLS)
@@ -727,7 +735,7 @@ async function runAgent({ systemPrompt, input, outputFile, doneMarker, label, ro
     "--model", "claude-opus-4-8",
     "--permission-mode", CLAUDE_PERMISSION_MODE,
     "--add-dir", process.cwd(),
-    "--system-prompt-file", systemPrompt,
+    "--append-system-prompt-file", systemPrompt,
     "--print",
     "--output-format", "json",
   ]
