@@ -1,5 +1,9 @@
 {
     "type": "module",
+    "scripts": {
+        "demo:reset": "node demo-reset.mjs",
+        "verify:guardrails": "node verify-guardrails.mjs"
+    },
     "dependencies": {
         "dotenv": "^17.4.2"
     }

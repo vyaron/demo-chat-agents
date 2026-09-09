@@ -45,6 +45,19 @@ cd frontend && npm run dev
 - Open 3 terminal panes: Orchestrator | Frontend | Backend
 - Font size 18+ for audience readability
 
+### 8. Reset the demo state (last thing before you present)
+```bash
+npm run demo:reset -- --dry   # see what it would clear
+npm run demo:reset            # clear it
+```
+Returns to `main`, deletes the branches previous runs left behind, empties
+`.orchestrate/` and `.lab/`, and removes uncommitted `.plan/` files. Without this,
+a run that stopped early leaves its backlog task unchecked — so the next run picks
+the same task and collides with its own leftovers. It refuses to run on a dirty
+working tree and keeps unmerged branches unless you pass `--force`.
+
+It cannot reset **Linear** — archive last run's tickets by hand.
+
 ---
 
 ## On Stage — Step-by-Step Script
