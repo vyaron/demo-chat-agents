@@ -99,6 +99,26 @@ check("DROP TABLE is blocked", bash('psql -c "DROP TABLE users"'), BLOCK)
 check("npm test is allowed", bash("cd frontend && npm test"), ALLOW)
 check("process.env in a command is allowed", bash('node -e "console.log(process.env.CI)"'), ALLOW)
 
+// --- Branch ownership: dev-loop.js creates the branch, sub-agents never do ---
+// The failure this prevents: dev-loop.js creates feat/<slug>, then an agent
+// follows git-workflow.md's "create the branch" line and re-creates it, killing
+// the run with `fatal: a branch named '...' already exists`.
+const agentBash = (command, role = "frontend") =>
+  runHook("block-destructive-bash.js", { tool_name: "Bash", tool_input: { command } }, { AGENT_ROLE: role })
+
+check("agent may NOT create a branch", agentBash("git checkout -b feat/top-bar"), BLOCK)
+check("agent may NOT create a branch with switch", agentBash("git switch -c feat/top-bar"), BLOCK)
+check("agent may NOT switch branches", agentBash("git checkout main"), BLOCK)
+check("agent may NOT name a new branch", agentBash("git branch feat/top-bar"), BLOCK)
+check("agent may NOT delete a branch", agentBash("git branch -D feat/top-bar"), BLOCK)
+check("qa is bound by the same rule", agentBash("git checkout -b fix/x", "qa"), BLOCK)
+// Read-only and file-level git stays usable inside an agent.
+check("agent may list branches", agentBash("git branch --show-current"), ALLOW)
+check("agent may see status and diff", agentBash("git status --short && git diff"), ALLOW)
+check("agent may restore a file", agentBash("git checkout -- frontend/src/App.tsx"), ALLOW)
+// Interactive sessions and the orchestrator branch normally — no AGENT_ROLE set.
+check("interactive session may create a branch", bash("git checkout -b feat/top-bar"), ALLOW)
+
 let failed = 0
 for (const c of cases) {
   if (!c.ok) failed += 1

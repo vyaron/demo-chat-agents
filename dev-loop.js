@@ -866,14 +866,29 @@ Deliver ${task.title} in the existing product using incremental FE, BE, and QA u
 `
 }
 
+// The loop is the only thing that touches branches — see the "Branches" section
+// of .claude/rules/git-workflow.md and the AGENT_ROLE gate in
+// .claude/hooks/block-destructive-bash.js.
+//
+// Create-then-fall-back, not check-then-create: `git switch -c` decides
+// "does this branch exist" atomically, so a re-run against a leftover branch from
+// an earlier demo cannot land between the check and the create. Branch bookkeeping
+// also never aborts the run — a live demo continuing on the current branch beats a
+// stack trace on the projector.
 function createGitBranch(branch) {
   try {
-    execSync(`git rev-parse --verify ${branch}`, { stdio: "ignore" })
-    log(`Git branch '${branch}' already exists — checking it out.`)
-    execSync(`git checkout ${branch}`, { stdio: "inherit" })
+    execSync(`git switch -c ${branch}`, { stdio: "ignore" })
+    log(`Created git branch: ${branch}`)
+    return
   } catch {
-    log(`Creating git branch: ${branch}`)
-    execSync(`git checkout -b ${branch}`, { stdio: "inherit" })
+    // Branch already exists (or the switch was refused) — fall through.
+  }
+
+  try {
+    execSync(`git switch ${branch}`, { stdio: "inherit" })
+    log(`Git branch '${branch}' already exists — checked it out.`)
+  } catch {
+    warn(`Could not switch to '${branch}' — continuing on the current branch.`)
   }
 }
 
