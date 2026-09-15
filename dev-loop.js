@@ -224,6 +224,12 @@ function recordCost(role, label, rawStdout) {
   return parsed.result ?? rawStdout
 }
 
+// How many calls already recorded this task carry `fragment` in their label.
+// Used to number repeated calls so each one keeps its own row.
+function countCostEntries(fragment) {
+  return costLog.filter((entry) => entry.label.includes(fragment)).length
+}
+
 function logLastCost(label) {
   const entry = costLog[costLog.length - 1]
   if (!entry || entry.label !== label) return
@@ -461,6 +467,7 @@ async function askClaudeToRevisePlan({ task, prd, figmaUrl, planPath, currentPla
     "--add-dir", process.cwd(),
     "--append-system-prompt-file", AGENT_PROMPT.orchestrator,
     "--print",
+    "--output-format", "json",
   ]
   if (CLAUDE_ALLOWED_TOOLS) args.push("--allowedTools", CLAUDE_ALLOWED_TOOLS)
 
@@ -492,9 +499,16 @@ Hard requirements:
 - Keep Status as draft until explicit APPROVED in terminal
 - Resolve or update Open Questions based on feedback where possible`
 
-  const stdout = await spawnClaude(args, input)
-  if (!stdout) return null
-  return stdout.trim() || null
+  const rawStdout = await spawnClaude(args, input)
+  if (!rawStdout) return null
+
+  // This runs once per revision cycle, so number the rows — a plan that took
+  // five passes should show five costs, not one row overwritten five times.
+  const label = `Orchestrator (plan revision ${countCostEntries("plan revision") + 1})`
+  const stdout = recordCost("orchestrator", label, rawStdout)
+  logLastCost(label)
+
+  return stdout?.trim() || null
 }
 
 async function reviewPlanUntilApproved({ task, prd, figmaUrl, planPath }) {
@@ -537,6 +551,7 @@ async function askClaudeToCreateTickets({ teamId, task, planPath }) {
     "--add-dir", process.cwd(),
     "--append-system-prompt-file", AGENT_PROMPT.orchestrator,
     "--print",
+    "--output-format", "json",
   ]
   if (CLAUDE_ALLOWED_TOOLS) args.push("--allowedTools", CLAUDE_ALLOWED_TOOLS)
 
@@ -567,7 +582,12 @@ TICKETS_JSON
 ${shape}
 END_TICKETS_JSON`
 
-  const stdout = await spawnClaude(args, input)
+  const rawStdout = await spawnClaude(args, input)
+  if (!rawStdout) return null
+
+  const stdout = recordCost("orchestrator", "Orchestrator (tickets)", rawStdout)
+  logLastCost("Orchestrator (tickets)")
+
   if (!stdout) return null
   return parseTicketsFromOutput(stdout, { requireBackend: task.isFullStack })
 }
