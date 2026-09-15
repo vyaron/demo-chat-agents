@@ -30,14 +30,31 @@
 - `.claude/skills/` — procedural know-how, loaded on demand by task.
 - `.claude/agents/` — sub-agent definitions used by the dev loop.
 - `.claude/hooks/` — guardrail hook implementations, wired by `.claude/settings.json`.
+- `.claude/output-styles/` — response-style definitions, selected by the user.
 - `.plan/` — `000-backlog.md` is the task queue; `NNN-YYYY-MM-DD-*.md` are the plans.
 - `.orchestrate/` — everything the dev loop generates (plan mirror, tickets, agent
   reports, QA report, API contract, cost traces). Never create a `docs/` directory.
+- `.lab/` — gitignored scratch space for demo runs (agent progress logs, review
+  reports). Disposable: never source of truth, never referenced by code.
+- `.cursor/`, `.github/`, `.vscode/` — instruction and settings files for other
+  tools. They mirror this file; they do not override it.
 - `frontend/` — the Vite + React + TypeScript app. Not Next.js: there is no App Router
   and no `src/app/`.
 - `backend/` — the Express + socket.io API, backed by Supabase. It already exists.
   Only a backlog task explicitly marked `stack:full` may change it — `dev-loop.js`
   reads that marker and skips the Backend Agent entirely on a frontend-only task.
+  It also depends on `@anthropic-ai/sdk`: `backend/src/lib/ai.ts` calls the Claude
+  Messages API on the socket send path for `@ai` mentions, using `ANTHROPIC_API_KEY`
+  from the gitignored backend env file. Treat that path as a live credential surface.
+
+### Root scripts and files
+- `dev-loop.js` — the multi-agent dev loop. `trace-agent.js` — single-agent cost trace.
+- `verify-guardrails.mjs` — `npm run verify:guardrails`, the hook test suite.
+- `demo-reset.mjs` — `npm run demo:reset`, clears state between workshop runs.
+- `dev-loop.prompt.md` — the same loop as a prompt, for tools that cannot run the script.
+- `DEMO-GUIDE.md`, `demo-concurrency.md` — presenter notes. Not product docs.
+- `render.yaml` — Render deploy: one web service from `backend/`, which builds and
+  serves the frontend too. Health check is `/health`.
 
 ## Rules — always in context
 @.claude/rules/code-style.md

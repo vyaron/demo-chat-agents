@@ -31,6 +31,3 @@ it is not licence to restyle neighbouring surfaces to match.
   `@theme inline`.
 - Use nested CSS only where it improves scoping and readability.
 
-> Resolves Q3 of `.plan/002-2026-08-03-pixel-perfect-the-visual-design.md`: the
-> former `main.css` / `setup` / `basics` / `cmps` structure predated this Tailwind
-> setup and no longer applies. The token intent above is what survives from it.
