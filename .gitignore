@@ -25,6 +25,11 @@ pnpm-debug.log*
 .orchestrate/*
 !.orchestrate/README.md
 
+# Concurrency-demo scratch — the live console log plus one report per reviewer
+# lens. Ignored as a whole directory, not just *.log, so the .md reports the
+# agents write don't show up as untracked files after a demo run.
+.lab/
+
 # Test artifacts
 playwright-report/
 test-results/

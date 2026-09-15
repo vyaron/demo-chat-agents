@@ -4,10 +4,8 @@ Five reviewers audit **this repository** at the same time, each through a differ
 lens, none of them seeing each other's work. A live console beside the Claude window
 shows all five working at once.
 
-Prompt-only. The review itself is read-only — the only thing
+The review itself is read-only — the only thing
 written is each agent's own progress log, into a gitignored scratch directory.
-
-**Two acts, ~10 minutes.** Act 1 is the spectacle. Act 2 is the point.
 
 ---
 
@@ -26,11 +24,6 @@ PowerShell equivalent:
 ```powershell
 New-Item -ItemType Directory -Force .lab; Clear-Content -Path .lab\live.log -ErrorAction SilentlyContinue; Get-Content .lab\live.log -Wait
 ```
-
-Font 18pt or larger. The console is the show — give it real estate.
-
-`.lab/*.log` is already covered by the `*.log` rule in [.gitignore](.gitignore#L11),
-so this leaves no diff behind and needs no cleanup.
 
 ---
 
@@ -60,8 +53,9 @@ The five lenses, one per agent:
 
 Give every agent these same instructions:
 
-  - You are REVIEWING. Read-only: do not edit or create any file except your own
-    log line appends described below. Do not fix anything you find.
+  - You are REVIEWING. Read-only: do not edit or create any file except the two
+    described below — your own log line appends, and your own report file. Do not
+    fix anything you find.
   - Ignore node_modules/, dist/, coverage/, test-results/, and .git/ entirely.
   - Stay strictly inside your lens. If you notice something outside it, ignore it.
     Another reviewer has it.
@@ -93,10 +87,14 @@ Give every agent these same instructions:
 
   - 3 to 6 findings, ranked most severe first. No preamble.
 
+  - WRITE YOUR REPORT TO DISK before you reply. Save that exact text to
+    .lab/<TAG>-report.md, where TAG is your own tag without brackets or padding:
+    SEC, PERF, A11Y, COST, DOCS. Then return the same text as your reply.
+
 When all five report, print the five reports one after another. Nothing else yet.
 ````
 
-**What the room sees:** five agents start together in the task list, and the right
+**What we see:** five agents start together in the task list, and the right
 pane immediately fills with interleaved lines from all five lenses — SEC reading a
 hook, A11Y reading a component, DOCS reading `AGENTS.md`, all timestamped to the
 same second.
@@ -104,7 +102,6 @@ same second.
 > "Nobody is waiting for anybody. Five reviewers, five different questions, one
 > pass over the repo."
 
-Let it run. Do not narrate over the console — let people read it.
 
 ---
 
@@ -130,7 +127,7 @@ Do not resolve anything. Surface it.
 
 ---
 
-## Presenter Notes
+## Notes
 
 ### The moment to watch for
 
@@ -139,24 +136,22 @@ Do not resolve anything. Surface it.
 not just Bash. The SECURITY reviewer will very likely try to read `.env` or
 `backend/.env` — both exist — and get hard-blocked mid-review.
 
-If it happens, stop and point at it:
+If it happens:
 
-> "Our own security reviewer just got stopped by our own guardrail. Nobody wrote
-> that rule for this demo — it's been in the repo the whole time, and it doesn't
+> "Our own security reviewer just got stopped by our own guardrail. It doesn't
 > care that the thing it's blocking is on our side."
 
-This is the best unscripted beat available. Hope for it.
 
 ### Territory each lens should cover
 
 Use these to nudge a reviewer that comes back thin — "did SEC look at how the
-sub-agent roles are enforced?" Recovers live and reads as deliberate.
+sub-agent roles are enforced?"
 
 - **SEC** — `AGENTS.md` itself documents that `enforce-agent-boundaries.js` **fails
   open** on an unknown `AGENT_ROLE`; `dev-loop.js` runs sub-agents under
   `bypassPermissions`; two `.env` files exist on disk; `permissions.deny` overlaps
   the hooks but covers less.
-- **PERF** — `frontend/src` is only 559 lines across 7 files, so this lens has the
+- **PERF** — `frontend/src` is only ~600 lines across 11 files, so this lens has the
   least to chew on; point it at `lib/socket.ts` and `ChatConversation.tsx` (206
   lines, the biggest component) and at the backend message queries.
 - **A11Y** — the WhatsApp palette (`#075E54`), inline SVG icons with no accessible
@@ -183,19 +178,26 @@ demo, and a lens coming back "healthy" is a legitimate result to read out loud.
 | Occasional garbled console line | Five processes appending to one file. Harmless, and honestly it makes the concurrency visible. Say so. |
 | A lens returns two thin findings | Nudge from the territory list above. |
 | A run stalls | You have four reports. Act 2 works fine on four. |
+| Claude summarizes instead of printing the five reports | The files are still on disk. `cat .lab/*-report.md`, or say "print each report verbatim." |
 | Reviewers wander into `dist/` or `coverage/` | Both exist on disk. The prompt excludes them; if one drifts, say "skip build output." |
 
 ### Notes
 
-- Cleanup is unnecessary — `.lab/` holds only gitignored `*.log` files, so git
-  shows nothing. (`rm -rf` is blocked by `block-destructive-bash.js` anyway. Use
-  `rm -r .lab` if you insist.)
+- Cleanup is unnecessary — the whole `.lab/` directory is gitignored
+  ([.gitignore](.gitignore#L31)), so git shows nothing after a run. (`rm -rf` is
+  blocked by `block-destructive-bash.js` anyway. Use `rm -r .lab` if you insist.)
+- The five reports land in `.lab/SEC-report.md` and friends. `cat .lab/*-report.md`
+  in the console pane is a cleaner way to read the verdicts out than scrolling the
+  Claude pane — and they survive the session, so Act 2 can be re-run later.
 - Want *structural* read-only instead of instructed read-only? Swap
-  `general-purpose` for `Explore`, which has no write tools — but then the agents
-  cannot write log lines either, and you lose the console. Not worth it here.
+  `general-purpose` for `Explore`, which has no Edit or Write tool. It keeps Bash,
+  so the log lines and the console still work. The reason not to here is different:
+  `Explore` is tuned to *locate* code and reads excerpts rather than whole files,
+  so it finds where things are without auditing them. Wrong shape for a review.
 - Running the SECURITY lens as `subagent_type: security-reviewer` instead makes
-  the point that agent *type* is a real choice. It also has no Write tool, so give
-  that one a pass on logging.
+  the point that agent *type* is a real choice. It has Read, Grep, Glob and Bash —
+  no Write, so it stays on the console but cannot save its report the normal way.
+  Either let that one skip the report file, or tell it to write via Bash heredoc.
 - Five lenses is a choice, not a limit. `SKEPTICAL PM` — "is the whole dev-loop
   worth it versus just using Claude Code interactively?" — is the spiciest
   available swap-in for this particular repo.
